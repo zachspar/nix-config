@@ -4,10 +4,14 @@
 
 { config, pkgs, ... }:
 
+let
+  home-manager = builtins.fetchTarball https://github.com/nix-community/home-manager/archive/release-25.11.tar.gz;
+in
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      (import "${home-manager}/nixos")
     ];
 
   # Bootloader.
@@ -87,9 +91,16 @@
     description = "Zachary Spar";
     extraGroups = [ "networkmanager" "wheel" ];
     packages = with pkgs; [
-      kdePackages.kate
-    #  thunderbird
+      #kdePackages.kate
+      #thunderbird
     ];
+  };
+
+  # Home Manager
+  home-manager.users.zspar = { pkgs, ... }: {
+    home.packages = [];
+    programs.bash.enable = true;
+    home.stateVersion = "25.11";
   };
 
   # Install firefox.
