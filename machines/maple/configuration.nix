@@ -98,8 +98,31 @@ in
 
   # Home Manager
   home-manager.users.zspar = { pkgs, ... }: {
-    home.packages = [];
+    # Allow unfree pkgs
+    nixpkgs.config.allowUnfree = true;
+
+    # Install packages just for zspar
+    home.packages = with pkgs; [
+      # basics
+      ripgrep htop neofetch kubectl kubelogin-oidc
+
+      # unfree
+      code-cursor zoom-us
+    ];
+
+    # Git Configuration
+    programs.git = {
+      enable = true;
+      settings = {
+        user = {
+          name = "Zachary Spar";
+          email = "zachspar@gmail.com";
+        };
+      };
+    };
+
     programs.bash.enable = true;
+
     home.stateVersion = "25.11";
   };
 
@@ -112,12 +135,7 @@ in
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
-    code-cursor
     git
-    htop
-    kubectl
-    kubelogin-oidc
-    neofetch
     vim
     wget
   ];
