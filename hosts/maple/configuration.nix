@@ -111,21 +111,12 @@ in
       code-cursor zoom-us lens
     ];
 
-    # Git Configuration
-    programs.git = {
-      enable = true;
-      settings = {
-        user = {
-          name = "Zachary Spar";
-          email = "zachspar@gmail.com";
-        };
-      };
-    };
-
-    programs.bash = {
-      enable = true;
-      shellAliases = import ./bash-aliases.nix;
-    };
+    # Import program configurations
+    imports = [
+      ./vim-config.nix
+      ./bash-config.nix
+      ./git-config.nix
+    ];
 
     home.stateVersion = "25.11";
   };
