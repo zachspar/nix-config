@@ -90,7 +90,7 @@ in
   users.users.zspar = {
     isNormalUser = true;
     description = "Zachary Spar";
-    extraGroups = [ "networkmanager" "wheel" ];
+    extraGroups = [ "networkmanager" "wheel" "docker" ];
     packages = with pkgs; [
       #kdePackages.kate
       #thunderbird
@@ -147,6 +147,9 @@ in
     "nix-command"
     "flakes"
   ];
+
+  # Virtualization
+  virtualisation.docker.enable = true;
 
   # List services that you want to enable:
   # Enable the OpenSSH daemon.
