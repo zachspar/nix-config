@@ -4,3 +4,22 @@ result-*
 
 # Ignore automatically generated direnv output
 .direnv
+.direnv/
+
+# Ignore derivation files
+*.drv
+
+# Ignore nix-shell temporary files
+.nix-shell-*
+
+# Ignore check files
+*.check
+
+# Ignore GC files
+*.gcda
+*.gcno
+
+# Ignore compiled objects
+*.o
+*.so
+*.a
