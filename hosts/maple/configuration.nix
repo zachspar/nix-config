@@ -11,6 +11,7 @@ in
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      ./displaylink-config.nix
       (import "${home-manager}/nixos")
     ];
 
