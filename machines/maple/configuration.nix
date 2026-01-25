@@ -108,7 +108,7 @@ in
       ripgrep htop neofetch kubectl kubelogin-oidc
 
       # unfree
-      code-cursor zoom-us
+      code-cursor zoom-us lens
     ];
 
     # Git Configuration
