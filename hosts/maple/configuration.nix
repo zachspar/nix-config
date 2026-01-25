@@ -109,7 +109,7 @@ in
       ripgrep htop neofetch jq yq
 
       # k8s
-      kubectl kubelogin-oidc cilium-cli
+      kubectl kubelogin-oidc cilium-cli talosctl
 
       # unfree
       code-cursor zoom-us lens
