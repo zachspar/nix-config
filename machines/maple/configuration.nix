@@ -61,6 +61,7 @@ in
   services.xserver.xkb = {
     layout = "us";
     variant = "";
+    options = "caps:escape";
   };
 
   # Enable CUPS to print documents.
