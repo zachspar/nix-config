@@ -106,7 +106,7 @@ in
     # Install packages just for zspar
     home.packages = with pkgs; [
       # basics
-      ripgrep htop neofetch
+      ripgrep htop neofetch jq yq
 
       # k8s
       kubectl kubelogin-oidc cilium-cli
