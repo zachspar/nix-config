@@ -121,7 +121,10 @@ in
       };
     };
 
-    programs.bash.enable = true;
+    programs.bash = {
+      enable = true;
+      shellAliases = import ./bash-aliases.nix;
+    };
 
     home.stateVersion = "25.11";
   };
