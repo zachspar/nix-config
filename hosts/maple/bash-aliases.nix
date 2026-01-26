@@ -39,4 +39,7 @@
   kgn = "kubectl get nodes";
   kdns = "kubectl describe namespace";
   kgcm = "kubectl get configmaps";
+
+  # NixOS rebuild
+  rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#maple";
 }
