@@ -116,6 +116,7 @@
       ./vim-config.nix
       ./bash-config.nix
       ./git-config.nix
+      ./readline-config.nix
     ];
 
     home.stateVersion = "25.11";
