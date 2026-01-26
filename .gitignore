@@ -23,3 +23,5 @@ result-*
 *.o
 *.so
 *.a
+.DS_Store
+
