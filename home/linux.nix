@@ -4,6 +4,7 @@
 {
   imports = [
     ./common.nix
+    ./programs/plasma.nix
   ];
 
   # Linux-specific packages
