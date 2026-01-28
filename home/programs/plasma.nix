@@ -4,9 +4,17 @@
 {
   programs.plasma = {
     enable = true;
+    overrideConfig = true;
+
+    workspace = {
+      colorScheme = "BreezeDark";
+      theme = "breeze-dark";
+      lookAndFeel = "org.kde.breezedark.desktop";
+    };
+
     shortcuts = {
       kwin = {
-        "Close Window" = "Alt+Q";
+        "Window Close" = "Alt+Q";
       };
     };
   };
