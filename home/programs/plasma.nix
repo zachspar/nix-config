@@ -15,6 +15,8 @@
     shortcuts = {
       kwin = {
         "Window Close" = "Alt+Q";
+        "Window Minimize" = "Alt+D";
+        "Window Maximize" = "Alt+W";
       };
     };
   };
