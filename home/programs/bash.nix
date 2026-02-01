@@ -42,7 +42,14 @@
     };
 
     initExtra = ''
+      # Change PS1
       PS1='\[\033[01;36m\][\[\033[01;35m\]\u\[\033[00m\]@\[\033[01;33m\]\h\[\033[01;31m\]:\[\033[01;34m\]\w\[\033[00m\]\[\033[01;36m\]]\[\033[00m\]\$ '
+
+      # Source kubectl's built-in Bash completion script dynamically
+      source <(kubectl completion bash)
+
+      # Enable completion for the 'k' alias (if you use it)
+      complete -F __start_kubectl k
     '';
   };
 }
