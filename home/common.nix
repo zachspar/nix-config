@@ -26,6 +26,7 @@
     kubectl
     kns
     kubelogin-oidc
+    kubernetes-helm
     cilium-cli
   ];
 }
