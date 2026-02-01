@@ -24,6 +24,7 @@
 
     # k8s
     kubectl
+    kns
     kubelogin-oidc
     cilium-cli
   ];
