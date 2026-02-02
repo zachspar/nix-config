@@ -22,6 +22,9 @@
     jq
     yq
 
+    # python
+    python3
+
     # k8s
     kubectl
     kns
