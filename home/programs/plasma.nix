@@ -19,5 +19,20 @@
         "Window Maximize" = "Alt+W";
       };
     };
+
+    # Enable Alt+Mouse click to drag windows
+    configFile = {
+      kwinrc = {
+        Windows = {
+          ElectricBorderDelay = 150;
+        };
+        MouseBindings = {
+          CommandAllKey = "Alt";
+          CommandWindow1 = "Move";
+          CommandWindow2 = "Toggle raise and lower";
+          CommandWindow3 = "Resize";
+        };
+      };
+    };
   };
 }
