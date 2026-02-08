@@ -19,6 +19,7 @@
     ripgrep
     htop
     neofetch
+    tree
     jq
     yq
 
