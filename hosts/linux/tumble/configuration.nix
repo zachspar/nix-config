@@ -124,6 +124,8 @@
   
   virtualisation.libvirtd = {
     enable = true;
+    onBoot = "start";  # Start VMs at boot
+    onShutdown = "shutdown";  # Gracefully shutdown VMs
     qemu = {
       package = pkgs.qemu_kvm;
       runAsRoot = true;
