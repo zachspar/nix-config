@@ -26,7 +26,26 @@
         system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
-          ./hosts/maple/configuration.nix
+          ./hosts/linux/maple/configuration.nix
+          home-manager.nixosModules.home-manager
+          {
+            home-manager.useUserPackages = true;
+            home-manager.useGlobalPkgs = true;
+            home-manager.users.zspar = { pkgs, ... }: {
+              imports = [
+                ./home/linux.nix
+                inputs.plasma-manager.homeModules.plasma-manager
+              ];
+              home.stateVersion = "25.11";
+            };
+          }
+        ];
+      };
+      tumble = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        specialArgs = { inherit inputs; };
+        modules = [
+          ./hosts/linux/tumble/configuration.nix
           home-manager.nixosModules.home-manager
           {
             home-manager.useUserPackages = true;

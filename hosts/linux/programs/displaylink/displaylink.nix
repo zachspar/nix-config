@@ -30,7 +30,7 @@
   ];
 
   # Script to prefetch DisplayLink driver (run once manually if needed)
-  # Located at: ./prefetch-displaylink.sh
+  # Located at: hosts/linux/programs/displaylink/prefetch-displaylink.sh
 
   # Automatically prefetch DisplayLink driver on first boot
   # This runs once to add the driver binary to the nix store

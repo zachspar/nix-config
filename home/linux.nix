@@ -27,6 +27,6 @@
     sss = "sudo systemctl status";
 
     # NixOS rebuild
-    rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#maple";
+    rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#$(hostname)";
   };
 }
