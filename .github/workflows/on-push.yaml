@@ -13,6 +13,12 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        host:
+          - maple
+          - tumble
     steps:
       - uses: actions/checkout@v6
 
@@ -21,4 +27,4 @@ jobs:
       # NOTE: This is a workaround for DisplayLink EULA
       - run: ./hosts/linux/programs/displaylink/prefetch-displaylink.sh
 
-      - run: nix build .#nixosConfigurations.maple.config.system.build.toplevel
+      - run: nix build .#nixosConfigurations.${{ matrix.host }}.config.system.build.toplevel

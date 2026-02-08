@@ -88,7 +88,7 @@
   users.users.zspar = {
     isNormalUser = true;
     description = "Zachary Spar";
-    extraGroups = [ "networkmanager" "wheel" "docker" ];
+    extraGroups = [ "networkmanager" "wheel" "docker" "libvirtd" ];
   };
 
   # Install firefox.
@@ -103,6 +103,7 @@
     git
     vim
     wget
+    virt-manager
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
@@ -120,6 +121,15 @@
 
   # Virtualization
   virtualisation.docker.enable = true;
+  
+  virtualisation.libvirtd = {
+    enable = true;
+    qemu = {
+      package = pkgs.qemu_kvm;
+      runAsRoot = true;
+      swtpm.enable = true;
+    };
+  };
 
   # List services that you want to enable:
 
