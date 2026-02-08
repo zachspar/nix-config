@@ -84,15 +84,11 @@
   # Enable touchpad support (enabled default in most desktopManager).
   # services.xserver.libinput.enable = true;
 
-  # Define a user account. Don't forget to set a password with ‘passwd’.
+  # Define a user account. Don't forget to set a password with 'passwd'.
   users.users.zspar = {
     isNormalUser = true;
     description = "Zachary Spar";
-    extraGroups = [ "networkmanager" "wheel" ];
-    packages = with pkgs; [
-      kdePackages.kate
-    #  thunderbird
-    ];
+    extraGroups = [ "networkmanager" "wheel" "docker" ];
   };
 
   # Install firefox.
@@ -121,6 +117,9 @@
     "nix-command"
     "flakes"
   ];
+
+  # Virtualization
+  virtualisation.docker.enable = true;
 
   # List services that you want to enable:
 
