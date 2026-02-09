@@ -68,6 +68,16 @@
   # Enable sound with pipewire.
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
+  
+  # Enable passwordless sudo for zspar
+  security.sudo.extraRules = [{
+    users = [ "zspar" ];
+    commands = [{
+      command = "ALL";
+      options = [ "NOPASSWD" ];
+    }];
+  }];
+  
   services.pipewire = {
     enable = true;
     alsa.enable = true;
@@ -89,6 +99,10 @@
     isNormalUser = true;
     description = "Zachary Spar";
     extraGroups = [ "networkmanager" "wheel" "docker" "libvirtd" ];
+    openssh.authorizedKeys.keys = [
+      # GitHub CI/CD pipeline key
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINiMoJsvyQkzI8RShn+qgcUy/Semp91TiLSaRhdzH/93 github-ci@tumble"
+    ];
   };
 
   # Install firefox.
@@ -136,7 +150,10 @@
   # List services that you want to enable:
 
   # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
+  services.openssh.enable = true;
+
+  # Enable Tailscale for remote access
+  services.tailscale.enable = true;
 
   # Open ports in the firewall.
   # networking.firewall.allowedTCPPorts = [ ... ];

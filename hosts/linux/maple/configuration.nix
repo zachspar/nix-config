@@ -124,6 +124,7 @@
   # Enable the OpenSSH daemon.
   # services.openssh.enable = true;
 
+  # Enable Tailscale for remote access
   services.tailscale.enable = true;
 
   # Open ports in the firewall.
