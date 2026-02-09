@@ -68,4 +68,4 @@ jobs:
       
       - name: Deploy to remote host
         run: |
-          nixos-rebuild switch --flake .#${{ matrix.host }} --target-host zspar@${{ matrix.host }} --use-remote-sudo
+          nix-shell -p nixos-rebuild --run "nixos-rebuild switch --flake .#${{ matrix.host }} --target-host zspar@${{ matrix.host }} --use-remote-sudo"
