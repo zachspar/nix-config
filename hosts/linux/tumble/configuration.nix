@@ -108,6 +108,9 @@
   # Install firefox.
   programs.firefox.enable = true;
 
+  # Enable Steam
+  programs.steam.enable = true;
+
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
 
@@ -118,7 +121,6 @@
     vim
     wget
     virt-manager
-    steam
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
