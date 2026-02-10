@@ -21,6 +21,26 @@
         "type": "github"
       }
     },
+    "nix-pkgs": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1770691401,
+        "narHash": "sha256-UL79w4wsecTKzrtbJNF69mmMhSWAD7oMuEF0S2NZu08=",
+        "owner": "zachspar",
+        "repo": "nix-pkgs",
+        "rev": "f7c52b4419df5ce5cde1e26140a3c02532d58b7f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "zachspar",
+        "repo": "nix-pkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1770136044,
@@ -63,6 +83,7 @@
     "root": {
       "inputs": {
         "home-manager": "home-manager",
+        "nix-pkgs": "nix-pkgs",
         "nixpkgs": "nixpkgs",
         "plasma-manager": "plasma-manager"
       }

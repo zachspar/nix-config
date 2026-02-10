@@ -17,20 +17,29 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+
+    # Custom packages
+    nix-pkgs = {
+      url = "github:zachspar/nix-pkgs";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, ... }@inputs: {
+  outputs = { self, nixpkgs, home-manager, nix-pkgs, ... }@inputs: {
     # NixOS configurations (x86_64-linux)
     nixosConfigurations = {
       maple = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
+          # Apply nix-pkgs overlay
+          { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
           ./hosts/linux/maple/configuration.nix
           home-manager.nixosModules.home-manager
           {
             home-manager.useUserPackages = true;
             home-manager.useGlobalPkgs = true;
+            home-manager.extraSpecialArgs = { inherit inputs; };
             home-manager.users.zspar = { pkgs, ... }: {
               imports = [
                 ./home/linux.nix
@@ -45,11 +54,14 @@
         system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
+          # Apply nix-pkgs overlay
+          { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
           ./hosts/linux/tumble/configuration.nix
           home-manager.nixosModules.home-manager
           {
             home-manager.useUserPackages = true;
             home-manager.useGlobalPkgs = true;
+            home-manager.extraSpecialArgs = { inherit inputs; };
             home-manager.users.zspar = { pkgs, ... }: {
               imports = [
                 ./home/linux.nix
