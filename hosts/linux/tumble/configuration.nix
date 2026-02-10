@@ -118,6 +118,7 @@
     vim
     wget
     virt-manager
+    steam
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
