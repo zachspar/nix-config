@@ -50,6 +50,21 @@
 
       # Enable completion for the 'k' alias (if you use it)
       complete -F __start_kubectl k
+
+      # Enable git completion for git aliases
+      # Git completion is typically sourced automatically by bash-completion
+      if [ -f /usr/share/bash-completion/completions/git ]; then
+        source /usr/share/bash-completion/completions/git
+      fi
+      
+      # Make git aliases use git's completion function
+      __git_complete g __git_main
+      __git_complete gd _git_diff
+      __git_complete gl _git_log
+      __git_complete gs _git_status
+      __git_complete gc _git_commit
+      __git_complete gch _git_checkout
+      __git_complete gb _git_branch
     '';
   };
 }

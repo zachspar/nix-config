@@ -67,6 +67,16 @@
   # Enable sound with pipewire.
   services.pulseaudio.enable = false;
   security.rtkit.enable = true;
+  
+  # Enable passwordless sudo for zspar
+  security.sudo.extraRules = [{
+    users = [ "zspar" ];
+    commands = [{
+      command = "ALL";
+      options = [ "NOPASSWD" ];
+    }];
+  }];
+  
   services.pipewire = {
     enable = true;
     alsa.enable = true;
