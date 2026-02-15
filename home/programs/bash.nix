@@ -4,6 +4,7 @@
 {
   programs.bash = {
     enable = true;
+    enableCompletion = true;
 
     shellAliases = {
       # ls aliases
@@ -45,26 +46,22 @@
       # Change PS1
       PS1='\[\033[01;36m\][\[\033[01;35m\]\u\[\033[00m\]@\[\033[01;33m\]\h\[\033[01;31m\]:\[\033[01;34m\]\w\[\033[00m\]\[\033[01;36m\]]\[\033[00m\]\$ '
 
-      # Source kubectl's built-in Bash completion script dynamically
-      source <(kubectl completion bash)
-
-      # Enable completion for the 'k' alias (if you use it)
-      complete -F __start_kubectl k
-
-      # Enable git completion for git aliases
-      # Git completion is typically sourced automatically by bash-completion
-      if [ -f /usr/share/bash-completion/completions/git ]; then
-        source /usr/share/bash-completion/completions/git
+      # kubectl completion (if kubectl exists)
+      if command -v kubectl &> /dev/null && [[ -n "$BASH_VERSION" ]]; then
+        source <(kubectl completion bash 2>/dev/null) || true
+        complete -o default -F __start_kubectl k 2>/dev/null || true
       fi
-      
-      # Make git aliases use git's completion function
-      __git_complete g __git_main
-      __git_complete gd _git_diff
-      __git_complete gl _git_log
-      __git_complete gs _git_status
-      __git_complete gc _git_commit
-      __git_complete gch _git_checkout
-      __git_complete gb _git_branch
+
+      # Git completion for aliases (only if __git_complete exists)
+      if type -t __git_complete &> /dev/null; then
+        __git_complete g __git_main
+        __git_complete gd _git_diff
+        __git_complete gl _git_log
+        __git_complete gs _git_status
+        __git_complete gc _git_commit
+        __git_complete gch _git_checkout
+        __git_complete gb _git_branch
+      fi
     '';
   };
 }
