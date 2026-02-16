@@ -22,6 +22,7 @@
     tree
     jq
     yq
+    direnv
 
     # python
     python3
