@@ -8,7 +8,7 @@
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
-      ../programs/displaylink/displaylink.nix
+      #../programs/displaylink/displaylink.nix
     ];
 
   # Bootloader.
