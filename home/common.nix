@@ -1,5 +1,5 @@
 # Common home-manager configuration shared across all hosts
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 {
   # Import program configurations
@@ -12,6 +12,11 @@
 
   # Allow unfree packages
   nixpkgs.config.allowUnfree = true;
+
+  # Add ~/.grok/bin to PATH (for Grok CLI tools)
+  home.sessionPath = [
+    "${config.home.homeDirectory}/.grok/bin"
+  ];
 
   # Common packages installed on all systems
   home.packages = with pkgs; [

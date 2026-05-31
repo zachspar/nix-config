@@ -1,5 +1,5 @@
 # Bash configuration
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 {
   programs.bash = {
@@ -43,6 +43,29 @@
     };
 
     initExtra = ''
+      # Source home-manager session vars so sessionPath etc. are available
+      # even in non-login shells. We try the nix-darwin per-user location first
+      # (what this system actually uses), then fall back to the generic one.
+      for hm_vars in \
+        "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh" \
+        "${config.home.profileDirectory}/etc/profile.d/hm-session-vars.sh" \
+        "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+      do
+        if [[ -f "$hm_vars" ]]; then
+          . "$hm_vars"
+          break
+        fi
+      done
+
+      # Make ~/.grok/bin available in *every* interactive bash session.
+      # We do a direct export (with proper dedup) because the hm-session-vars
+      # sourcing is frequently skipped on macOS due to the __HM_SESS_VARS_SOURCED
+      # guard when you run `bash` inside an existing terminal session.
+      case ":$PATH:" in
+        *":$HOME/.grok/bin:"*) ;;
+        *) export PATH="$HOME/.grok/bin''${PATH:+:$PATH}" ;;
+      esac
+
       # Change PS1
       PS1='\[\033[01;36m\][\[\033[01;35m\]\u\[\033[00m\]@\[\033[01;33m\]\h\[\033[01;31m\]:\[\033[01;34m\]\w\[\033[00m\]\[\033[01;36m\]]\[\033[00m\]\$ '
 
