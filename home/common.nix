@@ -28,6 +28,7 @@
     jq
     yq
     direnv
+    gnupg
 
     # python
     python3
