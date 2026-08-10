@@ -23,7 +23,7 @@
     # basics
     ripgrep
     htop
-    neofetch
+    fastfetch
     tree
     jq
     yq

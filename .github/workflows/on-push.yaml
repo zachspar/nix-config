@@ -56,6 +56,7 @@ jobs:
           include-output-paths: true
  
   deploy:
+    if: false
     runs-on: ubuntu-latest
     needs: build
     permissions:
