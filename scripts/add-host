@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# Scaffold a new Linux NixOS host for this flake.
+# Usage: add-host [-s|--system ARCH] [-d|--displaylink] [-f|--force] <hostname>
+set -euo pipefail
+
+DEFAULT_SYSTEM="x86_64-linux"
+SYSTEM="$DEFAULT_SYSTEM"
+DISPLAYLINK=0
+FORCE=0
+HOSTNAME=""
+
+usage() {
+  cat <<'EOF'
+Usage: add-host [options] <hostname>
+
+Scaffold a new Linux host under hosts/linux/<hostname>/.
+The flake auto-discovers hosts; no flake.nix edit is required.
+
+Options:
+  -s, --system ARCH   Nix system (default: x86_64-linux)
+  -d, --displaylink   Enable DisplayLink import in configuration.nix
+  -f, --force         Overwrite an existing host directory
+  -h, --help          Show this help
+
+Examples:
+  add-host birch
+  add-host -d oak
+  add-host --system aarch64-linux pi
+
+Run from the nix-config repository root (or any subdirectory).
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+find_flake_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/flake.nix" && -d "$dir/hosts/linux" && -d "$dir/templates/linux" ]]; then
+      # Prefer a writable working tree over a /nix/store copy
+      if [[ -w "$dir/hosts/linux" ]]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s|--system)
+      [[ $# -ge 2 ]] || die "--system requires an argument"
+      SYSTEM="$2"
+      shift 2
+      ;;
+    -d|--displaylink)
+      DISPLAYLINK=1
+      shift
+      ;;
+    -f|--force)
+      FORCE=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      die "unknown option: $1 (try --help)"
+      ;;
+    *)
+      if [[ -n "$HOSTNAME" ]]; then
+        die "unexpected argument: $1"
+      fi
+      HOSTNAME="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$HOSTNAME" ]] || {
+  usage >&2
+  exit 1
+}
+
+# Hostname: start with letter/digit, then alnum/hyphen (NixOS-friendly).
+if ! [[ "$HOSTNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+  die "invalid hostname '$HOSTNAME' (use lowercase letters, digits, hyphens)"
+fi
+
+ROOT="$(find_flake_root)" || die "could not find writable nix-config root (cd into the repo and retry)"
+
+TEMPLATE_DIR="$ROOT/templates/linux"
+HOST_DIR="$ROOT/hosts/linux/$HOSTNAME"
+
+[[ -d "$TEMPLATE_DIR" ]] || die "templates not found at $TEMPLATE_DIR"
+[[ -f "$TEMPLATE_DIR/configuration.nix" ]] || die "missing $TEMPLATE_DIR/configuration.nix"
+
+if [[ -e "$HOST_DIR" ]]; then
+  if [[ "$FORCE" -eq 1 ]]; then
+    echo "warning: overwriting existing host directory $HOST_DIR"
+    rm -rf "$HOST_DIR"
+  else
+    die "host already exists: $HOST_DIR (use --force to overwrite)"
+  fi
+fi
+
+mkdir -p "$HOST_DIR"
+
+displaylink_line="# ../programs/displaylink/displaylink.nix"
+if [[ "$DISPLAYLINK" -eq 1 ]]; then
+  displaylink_line="../programs/displaylink/displaylink.nix"
+fi
+
+sed \
+  -e "s/HOSTNAME/${HOSTNAME}/g" \
+  -e "s|# DISPLAYLINK_IMPORT|${displaylink_line}|g" \
+  "$TEMPLATE_DIR/configuration.nix" >"$HOST_DIR/configuration.nix"
+
+if command -v nixos-generate-config >/dev/null 2>&1; then
+  echo "Generating hardware-configuration.nix via nixos-generate-config..."
+  if ! nixos-generate-config --show-hardware-config >"$HOST_DIR/hardware-configuration.nix"; then
+    echo "warning: nixos-generate-config failed; writing stub instead" >&2
+    sed -e "s/HOSTNAME/${HOSTNAME}/g" \
+      "$TEMPLATE_DIR/hardware-configuration.stub.nix" >"$HOST_DIR/hardware-configuration.nix"
+  fi
+else
+  echo "nixos-generate-config not found; writing hardware stub (replace on target machine)."
+  sed -e "s/HOSTNAME/${HOSTNAME}/g" \
+    "$TEMPLATE_DIR/hardware-configuration.stub.nix" >"$HOST_DIR/hardware-configuration.nix"
+fi
+
+if [[ "$SYSTEM" != "$DEFAULT_SYSTEM" ]]; then
+  sed -e "s/SYSTEM/${SYSTEM}/g" "$TEMPLATE_DIR/meta.nix" >"$HOST_DIR/meta.nix"
+  echo "Wrote meta.nix with system = $SYSTEM"
+fi
+
+meta_line=""
+if [[ "$SYSTEM" != "$DEFAULT_SYSTEM" ]]; then
+  meta_line="  $HOST_DIR/meta.nix
+"
+fi
+
+cat <<EOF
+
+Created Linux host: $HOSTNAME
+  $HOST_DIR/configuration.nix
+  $HOST_DIR/hardware-configuration.nix
+${meta_line}
+Next steps:
+  1. Review and customize configuration.nix (hostname is already set).
+  2. If hardware-configuration.nix is a stub, on the target machine run:
+       nixos-generate-config --show-hardware-config > hosts/linux/${HOSTNAME}/hardware-configuration.nix
+  3. Commit so the flake can see the new files:
+       git add hosts/linux/${HOSTNAME} && git commit -m "Add host ${HOSTNAME}"
+  4. On the machine, symlink and rebuild:
+       sudo ln -sfn \$(pwd) /etc/nixos   # if not already
+       sudo nixos-rebuild switch --flake /etc/nixos#${HOSTNAME}
+
+EOF

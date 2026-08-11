@@ -31,64 +31,95 @@
     };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-pkgs, nix-darwin, ... }@inputs: {
-    # NixOS configurations (x86_64-linux)
-    nixosConfigurations = {
-      maple = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs; };
-        modules = [
-          # Apply nix-pkgs overlay
-          { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
-          ./hosts/linux/maple/configuration.nix
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useUserPackages = true;
-            home-manager.useGlobalPkgs = true;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-            home-manager.users.zspar = { pkgs, ... }: {
-              imports = [
-                ./home/linux.nix
-                inputs.plasma-manager.homeModules.plasma-manager
-              ];
-              home.stateVersion = "25.11";
-            };
-          }
-        ];
-      };
-      tumble = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        specialArgs = { inherit inputs; };
-        modules = [
-          # Apply nix-pkgs overlay
-          { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
-          ./hosts/linux/tumble/configuration.nix
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useUserPackages = true;
-            home-manager.useGlobalPkgs = true;
-            home-manager.extraSpecialArgs = { inherit inputs; };
-            home-manager.users.zspar = { pkgs, ... }: {
-              imports = [
-                ./home/linux.nix
-                inputs.plasma-manager.homeModules.plasma-manager
-              ];
-              home.stateVersion = "25.11";
-            };
-          }
-        ];
-      };
+  outputs = { self, nixpkgs, home-manager, nix-pkgs, nix-darwin, ... }@inputs:
+  let
+    inherit (nixpkgs) lib;
+
+    systems = [
+      "x86_64-linux"
+      "aarch64-linux"
+      "aarch64-darwin"
+      "x86_64-darwin"
+    ];
+
+    forAllSystems = lib.genAttrs systems;
+
+    pkgsFor = system: import nixpkgs {
+      inherit system;
+      config.allowUnfree = true;
     };
 
-    # Darwin configurations (aarch64-darwin / x86_64-darwin)
-    darwinConfigurations = {
-      neo = nix-darwin.lib.darwinSystem {
-        system = "aarch64-darwin";
+    # Directories under hosts/linux that contain configuration.nix (skip programs/)
+    linuxHostNames = lib.attrNames (
+      lib.filterAttrs (
+        name: type:
+        type == "directory"
+        && name != "programs"
+        && builtins.pathExists (./hosts/linux + "/${name}/configuration.nix")
+      ) (builtins.readDir ./hosts/linux)
+    );
+
+    # Directories under hosts/darwin that contain default.nix
+    darwinHostNames = lib.attrNames (
+      lib.filterAttrs (
+        name: type:
+        type == "directory"
+        && builtins.pathExists (./hosts/darwin + "/${name}/default.nix")
+      ) (builtins.readDir ./hosts/darwin)
+    );
+
+    # Optional per-host meta: { system = "x86_64-linux"; }
+    linuxHostMeta = hostname:
+      let
+        metaPath = ./hosts/linux + "/${hostname}/meta.nix";
+      in
+      if builtins.pathExists metaPath then import metaPath else { };
+
+    mkNixosHost = hostname:
+      let
+        meta = linuxHostMeta hostname;
+        system = meta.system or "x86_64-linux";
+      in
+      nixpkgs.lib.nixosSystem {
+        inherit system;
         specialArgs = { inherit inputs; };
         modules = [
-          # Apply nix-pkgs overlay
           { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
-          ./hosts/darwin/neo/default.nix
+          (./hosts/linux + "/${hostname}/configuration.nix")
+          home-manager.nixosModules.home-manager
+          {
+            home-manager.useUserPackages = true;
+            home-manager.useGlobalPkgs = true;
+            home-manager.extraSpecialArgs = { inherit inputs; };
+            home-manager.users.zspar = { pkgs, ... }: {
+              imports = [
+                ./home/linux.nix
+                inputs.plasma-manager.homeModules.plasma-manager
+              ];
+              home.stateVersion = "25.11";
+            };
+          }
+        ];
+      };
+
+    # Optional per-host meta for darwin: { system = "aarch64-darwin"; }
+    darwinHostMeta = hostname:
+      let
+        metaPath = ./hosts/darwin + "/${hostname}/meta.nix";
+      in
+      if builtins.pathExists metaPath then import metaPath else { };
+
+    mkDarwinHost = hostname:
+      let
+        meta = darwinHostMeta hostname;
+        system = meta.system or "aarch64-darwin";
+      in
+      nix-darwin.lib.darwinSystem {
+        inherit system;
+        specialArgs = { inherit inputs; };
+        modules = [
+          { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
+          (./hosts/darwin + "/${hostname}/default.nix")
           home-manager.darwinModules.home-manager
           {
             home-manager.useUserPackages = true;
@@ -101,6 +132,62 @@
           }
         ];
       };
-    };
+
+    # Wrap scripts/add-host so runtime tools are available; script resolves
+    # the writable repo root from $PWD (not the /nix/store flake copy).
+    addHostScript = system:
+      let
+        pkgs = pkgsFor system;
+      in
+      pkgs.writeShellApplication {
+        name = "add-host";
+        runtimeInputs = [ pkgs.coreutils pkgs.gnused pkgs.gnugrep pkgs.bash ];
+        text = ''
+          exec bash ${./scripts/add-host} "$@"
+        '';
+      };
+  in
+  {
+    nixosConfigurations = lib.genAttrs linuxHostNames mkNixosHost;
+
+    darwinConfigurations = lib.genAttrs darwinHostNames mkDarwinHost;
+
+    apps = forAllSystems (system: {
+      add-host = {
+        type = "app";
+        program = lib.getExe (addHostScript system);
+      };
+    });
+
+    devShells = forAllSystems (
+      system:
+      let
+        pkgs = pkgsFor system;
+        add-host = addHostScript system;
+      in
+      {
+        default = pkgs.mkShell {
+          name = "nix-config";
+          packages = with pkgs; [
+            git
+            nixfmt
+            nil
+            shellcheck
+            statix
+            add-host
+          ];
+          shellHook = ''
+            echo "nix-config devshell"
+            echo "  Linux hosts:  ${lib.concatStringsSep ", " linuxHostNames}"
+            echo "  Darwin hosts: ${lib.concatStringsSep ", " darwinHostNames}"
+            echo ""
+            echo "  add-host <hostname>   scaffold a new Linux host"
+            echo "  nixfmt                format Nix files"
+            echo "  shellcheck scripts/*  lint scripts"
+            echo ""
+          '';
+        };
+      }
+    );
   };
 }
