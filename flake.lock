@@ -49,11 +49,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1771730508,
-        "narHash": "sha256-ElDkaWEEZdB8QBOfxsI7GSt+S85wzFU2VRFfVpHzhsA=",
+        "lastModified": 1786406986,
+        "narHash": "sha256-9kDOkMsOe3W1LN+Cc3myDoBPLDVBssi7SjypwwitLAo=",
         "owner": "zachspar",
         "repo": "nix-pkgs",
-        "rev": "1c3572e543f58e1b8ffd73358c2538cf8bd4ebce",
+        "rev": "2694cd49b086f06b399df7ebe6f85f8253725a00",
         "type": "github"
       },
       "original": {
