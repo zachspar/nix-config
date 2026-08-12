@@ -5,6 +5,7 @@
   imports = [
     ./common.nix
     ./programs/plasma.nix
+    ./programs/linux-aliases.nix
   ];
 
   # Linux-specific packages
@@ -17,16 +18,4 @@
     # talosctl is Linux-only in nixpkgs
     talosctl
   ];
-
-  # Linux-specific bash aliases
-  programs.bash.shellAliases = {
-    # systemctl
-    ss = "sudo systemctl";
-    ssr = "sudo systemctl restart";
-    "ss-reboot" = "sudo systemctl reboot";
-    sss = "sudo systemctl status";
-
-    # NixOS rebuild
-    rebuild = "sudo nixos-rebuild switch --flake /etc/nixos#$(hostname)";
-  };
 }

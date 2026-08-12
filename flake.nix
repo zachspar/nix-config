@@ -29,9 +29,15 @@
       url = "github:nix-darwin/nix-darwin/nix-darwin-25.11";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Declarative disk partitioning (used by nixos-anywhere installs)
+    disko = {
+      url = "github:nix-community/disko/latest";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, nix-pkgs, nix-darwin, ... }@inputs:
+  outputs = { self, nixpkgs, home-manager, nix-pkgs, nix-darwin, disko, ... }@inputs:
   let
     inherit (nixpkgs) lib;
 
@@ -79,12 +85,22 @@
       let
         meta = linuxHostMeta hostname;
         system = meta.system or "x86_64-linux";
+        headless = meta.headless or false;
+        homeImports =
+          if headless then
+            [ ./home/server.nix ]
+          else
+            [
+              ./home/linux.nix
+              inputs.plasma-manager.homeModules.plasma-manager
+            ];
       in
       nixpkgs.lib.nixosSystem {
         inherit system;
         specialArgs = { inherit inputs; };
         modules = [
           { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
+          disko.nixosModules.disko
           (./hosts/linux + "/${hostname}/configuration.nix")
           home-manager.nixosModules.home-manager
           {
@@ -92,10 +108,7 @@
             home-manager.useGlobalPkgs = true;
             home-manager.extraSpecialArgs = { inherit inputs; };
             home-manager.users.zspar = { pkgs, ... }: {
-              imports = [
-                ./home/linux.nix
-                inputs.plasma-manager.homeModules.plasma-manager
-              ];
+              imports = homeImports;
               home.stateVersion = "25.11";
             };
           }
@@ -146,6 +159,19 @@
           exec bash ${./scripts/add-host} "$@"
         '';
       };
+
+    # Wrap scripts/bootstrap-host; installs a host with nixos-anywhere.
+    bootstrapHostScript = system:
+      let
+        pkgs = pkgsFor system;
+      in
+      pkgs.writeShellApplication {
+        name = "bootstrap-host";
+        runtimeInputs = [ pkgs.coreutils pkgs.gnugrep pkgs.bash pkgs.nix ];
+        text = ''
+          exec bash ${./scripts/bootstrap-host} "$@"
+        '';
+      };
   in
   {
     nixosConfigurations = lib.genAttrs linuxHostNames mkNixosHost;
@@ -157,6 +183,10 @@
         type = "app";
         program = lib.getExe (addHostScript system);
       };
+      bootstrap-host = {
+        type = "app";
+        program = lib.getExe (bootstrapHostScript system);
+      };
     });
 
     devShells = forAllSystems (
@@ -164,6 +194,7 @@
       let
         pkgs = pkgsFor system;
         add-host = addHostScript system;
+        bootstrap-host = bootstrapHostScript system;
       in
       {
         default = pkgs.mkShell {
@@ -175,15 +206,19 @@
             shellcheck
             statix
             add-host
+            bootstrap-host
+            nixos-anywhere
+            nixos-rebuild
           ];
           shellHook = ''
             echo "nix-config devshell"
             echo "  Linux hosts:  ${lib.concatStringsSep ", " linuxHostNames}"
             echo "  Darwin hosts: ${lib.concatStringsSep ", " darwinHostNames}"
             echo ""
-            echo "  add-host <hostname>   scaffold a new Linux host"
-            echo "  nixfmt                format Nix files"
-            echo "  shellcheck scripts/*  lint scripts"
+            echo "  add-host <hostname>          scaffold a new Linux host"
+            echo "  bootstrap-host <host> <ip>   install a host via nixos-anywhere"
+            echo "  nixfmt                       format Nix files"
+            echo "  shellcheck scripts/*         lint scripts"
             echo ""
           '';
         };

@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Install a NixOS host with nixos-anywhere onto a machine booted into a
+# NixOS installer/rescue system reachable over SSH.
+#
+# Usage: bootstrap-host [-y|--yes] <hostname> <[user@]target> [nixos-anywhere args...]
+#
+#   bootstrap-host bootstrap root@192.168.1.50   generic headless install
+#   bootstrap-host cedar root@192.168.1.50       install hosts/linux/cedar
+set -euo pipefail
+
+YES=0
+HOSTNAME=""
+TARGET=""
+
+usage() {
+  cat <<'EOF'
+Usage: bootstrap-host [options] <hostname> <[user@]target> [nixos-anywhere args...]
+
+Install a flake host onto a remote machine with nixos-anywhere.
+WARNING: this formats the target's disk as declared by the host's disko config.
+
+<hostname>  A host under hosts/linux/ (scaffold one with: add-host --server <name>),
+            or "bootstrap" for the generic headless config (/dev/sda, hostname
+            "bootstrap").
+<target>    SSH destination of the booted installer/rescue system, e.g. root@10.0.0.5.
+
+Options:
+  -y, --yes   Skip the confirmation prompt
+  -h, --help  Show this help
+
+Extra arguments are passed through to nixos-anywhere.
+
+For non-bootstrap hosts, a hardware-configuration.nix is generated on the
+target during the install and written into hosts/linux/<hostname>/ — commit it
+afterwards.
+
+Day-2 management after the install (TMPDIR=/tmp keeps the SSH control
+socket path under macOS's Unix socket length limit):
+  TMPDIR=/tmp nixos-rebuild switch --flake .#<hostname> --target-host zspar@<host> \
+    --use-remote-sudo --build-host zspar@<host>
+EOF
+}
+
+die() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+find_flake_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -f "$dir/flake.nix" && -d "$dir/hosts/linux" ]]; then
+      printf '%s' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -y|--yes)
+      YES=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [[ -z "$HOSTNAME" ]]; then
+        HOSTNAME="$1"
+      elif [[ -z "$TARGET" ]]; then
+        TARGET="$1"
+      else
+        break # remaining args go to nixos-anywhere
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$HOSTNAME" || -z "$TARGET" ]]; then
+  usage >&2
+  exit 1
+fi
+
+ROOT="$(find_flake_root)" || die "could not find nix-config root (cd into the repo and retry)"
+cd "$ROOT"
+
+HOST_DIR="hosts/linux/$HOSTNAME"
+[[ -f "$HOST_DIR/configuration.nix" ]] \
+  || die "unknown host '$HOSTNAME' (scaffold it first: add-host --server $HOSTNAME)"
+
+# Best-effort: surface the disk that is about to be wiped.
+disk="$(grep -rhoE '/dev/[a-zA-Z0-9/_-]+' \
+  "$HOST_DIR/configuration.nix" hosts/linux/disko/single-disk-ext4.nix 2>/dev/null \
+  | head -n1 || true)"
+
+echo "About to install NixOS with nixos-anywhere:"
+echo "  flake host:  .#$HOSTNAME"
+echo "  target:      $TARGET"
+echo "  disk:        ${disk:-see disko config} (WILL BE WIPED)"
+echo ""
+
+if [[ "$YES" -ne 1 ]]; then
+  read -rp "Type 'yes' to continue: " answer
+  [[ "$answer" == "yes" ]] || die "aborted"
+fi
+
+extra_args=()
+if [[ "$HOSTNAME" != "bootstrap" ]]; then
+  # Generate the real hardware config on the target and write it into the
+  # host directory before the system is built (filesystems stay disko-owned).
+  extra_args+=(
+    --generate-hardware-config nixos-generate-config
+    "$HOST_DIR/hardware-configuration.nix"
+  )
+fi
+
+# --build-on-remote: the toplevel is x86_64-linux, which cannot be built on
+# a darwin control machine; the target's installer does the build instead.
+nix run github:nix-community/nixos-anywhere -- \
+  --flake ".#$HOSTNAME" \
+  --build-on-remote \
+  "${extra_args[@]}" \
+  "$@" \
+  "$TARGET"
+
+cat <<EOF
+
+Install finished. Next steps:
+EOF
+if [[ "$HOSTNAME" != "bootstrap" ]]; then
+  cat <<EOF
+  1. Commit the generated hardware config:
+       git add $HOST_DIR/hardware-configuration.nix && git commit -m "Add $HOSTNAME hardware config"
+  2. SSH in:  ssh zspar@<host>
+  3. Manage remotely from this repo:
+       TMPDIR=/tmp nixos-rebuild switch --flake .#$HOSTNAME --target-host zspar@<host> \\
+         --use-remote-sudo --build-host zspar@<host>
+EOF
+else
+  cat <<EOF
+  1. SSH in:  ssh zspar@<ip>
+  2. Give the machine an identity:
+       add-host --server <name> [--disk /dev/...]
+     then re-deploy:
+       TMPDIR=/tmp nixos-rebuild switch --flake .#<name> --target-host root@<ip>
+EOF
+fi

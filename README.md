@@ -8,8 +8,9 @@ My NixOS / nix-darwin configuration for personal machines. This flake manages sy
 
 - **maple** - Laptop
 - **tumble** - Desktop workstation
+- **bootstrap** - Generic headless install target for nixos-anywhere (not a real machine)
 
-All Linux hosts share `hosts/linux/common.nix` and can opt into features like DisplayLink. Hosts are **auto-discovered** from `hosts/linux/*/configuration.nix` — no `flake.nix` edit when adding a machine.
+All Linux hosts share `hosts/linux/base.nix`. Desktop hosts add `hosts/linux/common.nix` (Plasma, printing, audio) and can opt into features like DisplayLink; headless servers add `hosts/linux/server-common.nix` (hardened SSH, grub for BIOS+UEFI) instead. Hosts are **auto-discovered** from `hosts/linux/*/configuration.nix` — no `flake.nix` edit when adding a machine.
 
 ### Darwin Hosts
 
@@ -23,18 +24,24 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 .
 ├── flake.nix              # Discovery, host factories, devShell, apps
 ├── scripts/
-│   └── add-host           # Scaffold a new Linux host
+│   ├── add-host           # Scaffold a new Linux host (desktop or server)
+│   └── bootstrap-host     # Install a host remotely via nixos-anywhere
 ├── templates/
 │   └── linux/             # Templates used by add-host
 ├── home/                  # Home Manager configs
 │   ├── common.nix         # Shared across all platforms
-│   ├── linux.nix          # Linux-specific config
+│   ├── linux.nix          # Linux desktop config (Plasma, GUI apps)
+│   ├── server.nix         # Headless config (no GUI)
 │   └── programs/          # Individual program configs
 └── hosts/
     ├── darwin/
     │   └── neo/
     └── linux/
-        ├── common.nix     # Shared NixOS baseline
+        ├── base.nix            # Headless-safe NixOS baseline
+        ├── common.nix          # Desktop baseline (imports base.nix)
+        ├── server-common.nix   # Server baseline (imports base.nix)
+        ├── disko/              # Declarative disk layouts
+        ├── bootstrap/          # Generic nixos-anywhere install target
         ├── maple/
         ├── tumble/
         └── programs/
@@ -47,7 +54,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 nix develop
 ```
 
-Provides `add-host`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
+Provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
 
 ## Getting Started
 
@@ -94,8 +101,10 @@ add-host <hostname>
 nix run .#add-host -- <hostname>
 
 # Options
-add-host --displaylink birch          # enable DisplayLink import
-add-host --system aarch64-linux pi    # non-default arch (writes meta.nix)
+add-host --displaylink <hostname>            # enable DisplayLink import
+add-host --system aarch64-linux <hostname>   # non-default arch (writes meta.nix)
+add-host --server <hostname>                 # headless server (see below)
+add-host --server --disk /dev/nvme0n1 <hostname>
 ```
 
 What `add-host` does:
@@ -103,6 +112,8 @@ What `add-host` does:
 1. Creates `hosts/linux/<hostname>/configuration.nix` from the template (imports `common.nix`, sets hostname).
 2. Writes `hardware-configuration.nix` via `nixos-generate-config` when available, otherwise a stub that fails evaluation with instructions.
 3. Optionally writes `meta.nix` when `--system` is not `x86_64-linux`.
+
+With `--server` it instead uses the server template (imports `server-common.nix` + the disko layout, sets the target disk), writes a bootable generic hardware stub that the install replaces, and always writes `meta.nix` with `headless = true`.
 
 Then:
 
@@ -127,16 +138,79 @@ Then:
 hosts/linux/<hostname>/
   configuration.nix          # required — discovered by the flake
   hardware-configuration.nix # required
-  meta.nix                   # optional: { system = "aarch64-linux"; }
+  meta.nix                   # optional: { system = "aarch64-linux"; headless = true; }
 ```
 
-`configuration.nix` should import `../common.nix` and `./hardware-configuration.nix`.
+`configuration.nix` should import `../common.nix` (desktop) or `../server-common.nix` (headless) plus `./hardware-configuration.nix`. Setting `headless = true` in `meta.nix` selects the server Home Manager profile (`home/server.nix`, no Plasma/GUI apps).
+
+## Headless Servers (nixos-anywhere)
+
+New machines can be provisioned remotely in one shot with [nixos-anywhere](https://github.com/nix-community/nixos-anywhere) and [disko](https://github.com/nix-community/disko). Server hosts import `server-common.nix` (key-only SSH for `zspar` and `root`, Tailscale, grub) and a declarative disk layout from `hosts/linux/disko/` (single-disk GPT, 1G ESP + ext4 root; hybrid BIOS boot partition so the same config boots on BIOS and UEFI firmware).
+
+### Prerequisites
+
+The target must be reachable over SSH as root, booted into either:
+
+- the NixOS installer ISO (`sudo passwd root` in the live console first), or
+- any existing Linux distro — nixos-anywhere kexecs it into an in-memory NixOS installer (needs ~1.5 GB RAM; the old OS is destroyed). Copy your key first: `ssh-copy-id root@<ip>`.
+
+Check the disk name on the target with `lsblk` (`sda`, `nvme0n1`, `vda`, …).
+
+### Install
+
+```bash
+nix develop
+
+# 1. Scaffold the host (disko + SSH, no desktop)
+add-host --server <hostname> --disk /dev/sda
+git add hosts/linux/<hostname> && git commit -m "Add host <hostname>"
+
+# 2. Install — WARNING: wipes the target disk
+bootstrap-host <hostname> root@<ip>
+
+# 3. Commit the hardware config generated during the install
+git add hosts/linux/<hostname>/hardware-configuration.nix
+git commit -m "Add <hostname> hardware config"
+
+# 4. Shell in
+ssh zspar@<ip>
+```
+
+`bootstrap-host` runs nixos-anywhere with `--build-on-remote` (required when driving installs from macOS) and `--generate-hardware-config`, which writes the target's real `hardware-configuration.nix` into the host directory before the system is built. Filesystems stay disko-owned. Extra arguments are passed through to nixos-anywhere (e.g. `--env-password` with `SSHPASS` for password-only targets).
+
+Notes:
+
+- If the target kexecs from another distro, it re-runs DHCP and may come back on a **different IP** — check your router's leases and point `bootstrap-host` at the new address; nixos-anywhere skips the kexec step when the target is already in the installer.
+- Consider a DHCP reservation, or run `sudo tailscale up` on the new host once and use its Tailscale name instead of the LAN IP.
+
+### Generic bootstrap target
+
+To bring a box up before deciding its identity, install the built-in generic config (hostname `bootstrap`, disk `/dev/sda`):
+
+```bash
+bootstrap-host bootstrap root@<ip>
+```
+
+Later, scaffold a real host with `add-host --server` and re-deploy onto it with `nixos-rebuild --target-host`.
+
+### Day-2 management
+
+Deploy config changes over SSH from the repo (no repo clone needed on the server):
+
+```bash
+TMPDIR=/tmp nixos-rebuild switch --flake .#<hostname> --target-host zspar@<host> \
+  --use-remote-sudo --build-host zspar@<host>
+```
+
+`--build-host` builds on the target (macOS can't build x86_64-linux); `TMPDIR=/tmp` keeps the SSH control socket path under macOS's Unix socket length limit.
 
 ## Features
 
 ### System Level
 - Latest Linux kernel
-- KDE Plasma 6 with Wayland
+- KDE Plasma 6 with Wayland (desktop hosts)
+- Headless server baseline with hardened SSH and declarative disks (disko)
+- Remote provisioning via nixos-anywhere
 - Docker
 - VM management with libvirtd/KVM (host-specific)
 - DisplayLink dock support (opt-in)
@@ -154,4 +228,4 @@ hosts/linux/<hostname>/
 - Nixpkgs tracks the branch set in `flake.nix` (currently nixos-26.05); Home Manager state version: 25.11
 - Git tree must be clean or committed for rebuilds to pick up new files reliably
 - DisplayLink prefetch script handles EULA acceptance for CI builds
-- Optional `hosts/linux/<name>/meta.nix`: `{ system = "x86_64-linux"; }` overrides the default system for that host
+- Optional `hosts/linux/<name>/meta.nix`: `{ system = "x86_64-linux"; }` overrides the default system for that host; `headless = true` selects the server Home Manager profile

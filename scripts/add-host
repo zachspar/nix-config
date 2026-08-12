@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Scaffold a new Linux NixOS host for this flake.
-# Usage: add-host [-s|--system ARCH] [-d|--displaylink] [-f|--force] <hostname>
+# Usage: add-host [-s|--system ARCH] [-d|--displaylink] [--server] [--disk DEV] [-f|--force] <hostname>
 set -euo pipefail
 
 DEFAULT_SYSTEM="x86_64-linux"
+DEFAULT_DISK="/dev/sda"
 SYSTEM="$DEFAULT_SYSTEM"
+DISK="$DEFAULT_DISK"
 DISPLAYLINK=0
+SERVER=0
 FORCE=0
 HOSTNAME=""
 
@@ -19,6 +22,9 @@ The flake auto-discovers hosts; no flake.nix edit is required.
 Options:
   -s, --system ARCH   Nix system (default: x86_64-linux)
   -d, --displaylink   Enable DisplayLink import in configuration.nix
+      --server        Scaffold a headless server host (disko + SSH,
+                      installable via bootstrap-host / nixos-anywhere)
+      --disk DEV      Target disk for disko (default: /dev/sda; server only)
   -f, --force         Overwrite an existing host directory
   -h, --help          Show this help
 
@@ -26,6 +32,8 @@ Examples:
   add-host birch
   add-host -d oak
   add-host --system aarch64-linux pi
+  add-host --server cedar
+  add-host --server --disk /dev/nvme0n1 spruce
 
 Run from the nix-config repository root (or any subdirectory).
 EOF
@@ -62,6 +70,15 @@ while [[ $# -gt 0 ]]; do
       DISPLAYLINK=1
       shift
       ;;
+    --server)
+      SERVER=1
+      shift
+      ;;
+    --disk)
+      [[ $# -ge 2 ]] || die "--disk requires an argument"
+      DISK="$2"
+      shift 2
+      ;;
     -f|--force)
       FORCE=1
       shift
@@ -93,13 +110,24 @@ if ! [[ "$HOSTNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
   die "invalid hostname '$HOSTNAME' (use lowercase letters, digits, hyphens)"
 fi
 
+if [[ "$SERVER" -eq 0 && "$DISK" != "$DEFAULT_DISK" ]]; then
+  die "--disk only applies to --server hosts"
+fi
+if [[ "$SERVER" -eq 1 && "$DISPLAYLINK" -eq 1 ]]; then
+  die "--displaylink does not apply to --server hosts"
+fi
+
 ROOT="$(find_flake_root)" || die "could not find writable nix-config root (cd into the repo and retry)"
 
 TEMPLATE_DIR="$ROOT/templates/linux"
 HOST_DIR="$ROOT/hosts/linux/$HOSTNAME"
 
 [[ -d "$TEMPLATE_DIR" ]] || die "templates not found at $TEMPLATE_DIR"
-[[ -f "$TEMPLATE_DIR/configuration.nix" ]] || die "missing $TEMPLATE_DIR/configuration.nix"
+if [[ "$SERVER" -eq 1 ]]; then
+  [[ -f "$TEMPLATE_DIR/server-configuration.nix" ]] || die "missing $TEMPLATE_DIR/server-configuration.nix"
+else
+  [[ -f "$TEMPLATE_DIR/configuration.nix" ]] || die "missing $TEMPLATE_DIR/configuration.nix"
+fi
 
 if [[ -e "$HOST_DIR" ]]; then
   if [[ "$FORCE" -eq 1 ]]; then
@@ -111,6 +139,42 @@ if [[ -e "$HOST_DIR" ]]; then
 fi
 
 mkdir -p "$HOST_DIR"
+
+if [[ "$SERVER" -eq 1 ]]; then
+  sed \
+    -e "s/HOSTNAME/${HOSTNAME}/g" \
+    -e "s|DISK|${DISK}|g" \
+    "$TEMPLATE_DIR/server-configuration.nix" >"$HOST_DIR/configuration.nix"
+
+  # Permissive stub with a broad driver set; bootstrap-host replaces it with
+  # a generated hardware config during the nixos-anywhere install.
+  sed -e "s/HOSTNAME/${HOSTNAME}/g" \
+    "$TEMPLATE_DIR/server-hardware-configuration.stub.nix" >"$HOST_DIR/hardware-configuration.nix"
+
+  # Server hosts always get meta.nix (headless = true drives home-manager).
+  sed -e "s/SYSTEM/${SYSTEM}/g" "$TEMPLATE_DIR/server-meta.nix" >"$HOST_DIR/meta.nix"
+
+  cat <<EOF
+
+Created Linux server host: $HOSTNAME
+  $HOST_DIR/configuration.nix        (disk: $DISK)
+  $HOST_DIR/hardware-configuration.nix
+  $HOST_DIR/meta.nix
+
+Next steps:
+  1. Review configuration.nix (hostname and disk are already set).
+  2. Commit so the flake can see the new files:
+       git add hosts/linux/${HOSTNAME} && git commit -m "Add host ${HOSTNAME}"
+  3. Boot the target into a NixOS installer/rescue system with SSH, then:
+       bootstrap-host ${HOSTNAME} root@<ip>
+     WARNING: this wipes $DISK on the target.
+  4. Commit the generated hardware-configuration.nix afterwards, then manage with:
+       TMPDIR=/tmp nixos-rebuild switch --flake .#${HOSTNAME} --target-host zspar@<host> \\
+         --use-remote-sudo --build-host zspar@<host>
+
+EOF
+  exit 0
+fi
 
 displaylink_line="# ../programs/displaylink/displaylink.nix"
 if [[ "$DISPLAYLINK" -eq 1 ]]; then
