@@ -10,9 +10,6 @@
     ./programs/readline.nix
   ];
 
-  # Allow unfree packages
-  nixpkgs.config.allowUnfree = true;
-
   # Add ~/.grok/bin to PATH (for Grok CLI tools)
   home.sessionPath = [
     "${config.home.homeDirectory}/.grok/bin"

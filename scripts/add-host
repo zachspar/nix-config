@@ -22,8 +22,9 @@ The flake auto-discovers hosts; no flake.nix edit is required.
 Options:
   -s, --system ARCH   Nix system (default: x86_64-linux)
   -d, --displaylink   Enable DisplayLink import in configuration.nix
-      --server        Scaffold a headless server host (disko + SSH,
-                      installable via bootstrap-host / nixos-anywhere)
+      --server        Scaffold a headless server host (disko + SSH + a
+                      BIOS/UEFI-agnostic bootloader, installable via
+                      bootstrap-host / nixos-anywhere)
       --disk DEV      Target disk for disko (default: /dev/sda; server only)
   -f, --force         Overwrite an existing host directory
   -h, --help          Show this help

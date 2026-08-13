@@ -9,18 +9,10 @@ let
   ];
 in
 {
-  imports = [ ./base.nix ];
-
-  # Servers use grub with the hybrid disko layout so the same config boots on
-  # both BIOS and UEFI firmware (base.nix's systemd-boot is UEFI-only).
-  boot.loader.systemd-boot.enable = lib.mkForce false;
-  boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
-  boot.loader.grub = {
-    enable = true;
-    efiSupport = true;
-    efiInstallAsRemovable = true; # install to EFI/BOOT/BOOTX64.EFI, no NVRAM writes
-    # BIOS install devices come from disko (the EF02 partition's disk).
-  };
+  imports = [
+    ./base.nix
+    ./boot/bios-uefi.nix
+  ];
 
   services.openssh = {
     enable = true;

@@ -5,9 +5,9 @@
     # Nixpkgs stable release
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-    # Home Manager
+    # Home Manager — use branch matching nixpkgs
     home-manager = {
-      url = "github:nix-community/home-manager/release-25.11";
+      url = "github:nix-community/home-manager/release-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -24,9 +24,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # nix-darwin (macOS) — use branch matching nixpkgs (25.11)
+    # nix-darwin (macOS) — use branch matching nixpkgs
     nix-darwin = {
-      url = "github:nix-darwin/nix-darwin/nix-darwin-25.11";
+      url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

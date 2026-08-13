@@ -10,7 +10,7 @@ My NixOS / nix-darwin configuration for personal machines. This flake manages sy
 - **tumble** - Desktop workstation
 - **bootstrap** - Generic headless install target for nixos-anywhere (not a real machine)
 
-All Linux hosts share `hosts/linux/base.nix`. Desktop hosts add `hosts/linux/common.nix` (Plasma, printing, audio) and can opt into features like DisplayLink; headless servers add `hosts/linux/server-common.nix` (hardened SSH, grub for BIOS+UEFI) instead. Hosts are **auto-discovered** from `hosts/linux/*/configuration.nix` — no `flake.nix` edit when adding a machine.
+All Linux hosts share `hosts/linux/base.nix`. Desktop hosts add `hosts/linux/common.nix` (Plasma, printing, audio) and can opt into features like DisplayLink; headless servers add `hosts/linux/server-common.nix` (hardened SSH, firmware-agnostic bootloader). Hosts are **auto-discovered** from `hosts/linux/*/configuration.nix` — no `flake.nix` edit when adding a machine.
 
 ### Darwin Hosts
 
@@ -40,6 +40,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
         ├── base.nix            # Headless-safe NixOS baseline
         ├── common.nix          # Desktop baseline (imports base.nix)
         ├── server-common.nix   # Server baseline (imports base.nix)
+        ├── boot/               # Bootloader modules (bios-uefi.nix)
         ├── disko/              # Declarative disk layouts
         ├── bootstrap/          # Generic nixos-anywhere install target
         ├── maple/
@@ -145,7 +146,7 @@ hosts/linux/<hostname>/
 
 ## Headless Servers (nixos-anywhere)
 
-New machines can be provisioned remotely in one shot with [nixos-anywhere](https://github.com/nix-community/nixos-anywhere) and [disko](https://github.com/nix-community/disko). Server hosts import `server-common.nix` (key-only SSH for `zspar` and `root`, Tailscale, grub) and a declarative disk layout from `hosts/linux/disko/` (single-disk GPT, 1G ESP + ext4 root; hybrid BIOS boot partition so the same config boots on BIOS and UEFI firmware).
+New machines can be provisioned remotely in one shot with [nixos-anywhere](https://github.com/nix-community/nixos-anywhere) and [disko](https://github.com/nix-community/disko). Server hosts import `server-common.nix` (key-only SSH for `zspar` and `root`, Tailscale, firmware-agnostic bootloader via `hosts/linux/boot/bios-uefi.nix`) and a declarative disk layout from `hosts/linux/disko/` (single-disk GPT, 1G ESP + ext4 root; hybrid BIOS boot partition so the same config boots on BIOS and UEFI firmware).
 
 ### Prerequisites
 
@@ -155,6 +156,8 @@ The target must be reachable over SSH as root, booted into either:
 - any existing Linux distro — nixos-anywhere kexecs it into an in-memory NixOS installer (needs ~1.5 GB RAM; the old OS is destroyed). Copy your key first: `ssh-copy-id root@<ip>`.
 
 Check the disk name on the target with `lsblk` (`sda`, `nvme0n1`, `vda`, …).
+
+**Secure Boot must be disabled** on the target. With it enabled, kexec refuses the unsigned NixOS kernel (`kexec_file: Enforced kernel signature verification failed`) and the installed system wouldn't boot either, since NixOS bootloaders are unsigned. On Proxmox, use an EFI disk without pre-enrolled keys or disable Secure Boot in the OVMF firmware menu.
 
 ### Install
 
