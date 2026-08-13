@@ -40,6 +40,11 @@
       kgn = "kubectl get nodes";
       kdns = "kubectl describe namespace";
       kgcm = "kubectl get configmaps";
+
+      # Ghostty advertises TERM=xterm-ghostty; most remotes lack that
+      # terminfo (`clear`: unknown terminal type). Override only for ssh
+      # so the local Ghostty session keeps its native TERM.
+      ssh = "TERM=xterm-256color ssh";
     };
 
     initExtra = ''
@@ -56,6 +61,12 @@
           break
         fi
       done
+
+      # If this host has no terminfo for $TERM (typical after SSH from
+      # Ghostty: xterm-ghostty), fall back so clear/tput/less work.
+      if ! infocmp "$TERM" >/dev/null 2>&1; then
+        export TERM=xterm-256color
+      fi
 
       # Make ~/.grok/bin available in *every* interactive bash session.
       # We do a direct export (with proper dedup) because the hm-session-vars
