@@ -35,6 +35,12 @@
       url = "github:nix-community/disko/latest";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Encrypted secrets (age); decrypted at activation, not evaluation
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = { self, nixpkgs, home-manager, nix-pkgs, nix-darwin, disko, ... }@inputs:
@@ -86,6 +92,9 @@
         meta = linuxHostMeta hostname;
         system = meta.system or "x86_64-linux";
         headless = meta.headless or false;
+        # Opt out with `sops = false` until the host SSH key is a recipient
+        # in .sops.yaml (bootstrap, and new nixos-anywhere installs).
+        sopsEnabled = meta.sops or true;
         homeImports =
           if headless then
             [ ./home/server.nix ]
@@ -101,6 +110,7 @@
         modules = [
           { nixpkgs.overlays = [ nix-pkgs.overlays.default ]; }
           disko.nixosModules.disko
+          inputs.sops-nix.nixosModules.sops
           (./hosts/linux + "/${hostname}/configuration.nix")
           home-manager.nixosModules.home-manager
           {
@@ -112,6 +122,8 @@
               home.stateVersion = "25.11";
             };
           }
+        ] ++ lib.optionals sopsEnabled [
+          ./hosts/linux/sops.nix
         ];
       };
 
@@ -209,6 +221,10 @@
             bootstrap-host
             nixos-anywhere
             nixos-rebuild
+            sops
+            age
+            ssh-to-age
+            mkpasswd
           ];
           shellHook = ''
             echo "nix-config devshell"
@@ -217,6 +233,10 @@
             echo ""
             echo "  add-host <hostname>          scaffold a new Linux host"
             echo "  bootstrap-host <host> <ip>   install a host via nixos-anywhere"
+            echo "  sops secrets/common.yaml     edit encrypted secrets"
+            echo "  sops updatekeys secrets/*.yaml"
+            echo "  ssh-to-age                   convert a host SSH pubkey to age"
+            echo "  mkpasswd -m yescrypt         hash a login password"
             echo "  nixfmt                       format Nix files"
             echo "  shellcheck scripts/*         lint scripts"
             echo ""

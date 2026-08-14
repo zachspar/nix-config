@@ -172,6 +172,11 @@ Next steps:
   4. Commit the generated hardware-configuration.nix afterwards, then manage with:
        TMPDIR=/tmp nixos-rebuild switch --flake .#${HOSTNAME} --target-host zspar@<host> \\
          --use-remote-sudo --build-host zspar@<host>
+  5. Enroll sops (needed for the login password) after the first boot:
+       ssh zspar@<host> 'cat /etc/ssh/ssh_host_ed25519_key.pub' | ssh-to-age
+     Add that age1… key to .sops.yaml, run:
+       sops updatekeys secrets/common.yaml
+     Then remove sops = false from hosts/linux/${HOSTNAME}/meta.nix and redeploy.
 
 EOF
   exit 0
@@ -200,23 +205,16 @@ else
     "$TEMPLATE_DIR/hardware-configuration.stub.nix" >"$HOST_DIR/hardware-configuration.nix"
 fi
 
-if [[ "$SYSTEM" != "$DEFAULT_SYSTEM" ]]; then
-  sed -e "s/SYSTEM/${SYSTEM}/g" "$TEMPLATE_DIR/meta.nix" >"$HOST_DIR/meta.nix"
-  echo "Wrote meta.nix with system = $SYSTEM"
-fi
-
-meta_line=""
-if [[ "$SYSTEM" != "$DEFAULT_SYSTEM" ]]; then
-  meta_line="  $HOST_DIR/meta.nix
-"
-fi
+sed -e "s/SYSTEM/${SYSTEM}/g" "$TEMPLATE_DIR/meta.nix" >"$HOST_DIR/meta.nix"
+echo "Wrote meta.nix with system = $SYSTEM, sops = false"
 
 cat <<EOF
 
 Created Linux host: $HOSTNAME
   $HOST_DIR/configuration.nix
   $HOST_DIR/hardware-configuration.nix
-${meta_line}
+  $HOST_DIR/meta.nix
+
 Next steps:
   1. Review and customize configuration.nix (hostname is already set).
   2. If hardware-configuration.nix is a stub, on the target machine run:
@@ -226,5 +224,9 @@ Next steps:
   4. On the machine, symlink and rebuild:
        sudo ln -sfn \$(pwd) /etc/nixos   # if not already
        sudo nixos-rebuild switch --flake /etc/nixos#${HOSTNAME}
+  5. Enroll sops after the host has an SSH host key:
+       cat /etc/ssh/ssh_host_ed25519_key.pub | ssh-to-age
+     Add that age1… key to .sops.yaml, run sops updatekeys secrets/common.yaml,
+     set sops = true in hosts/linux/${HOSTNAME}/meta.nix, then rebuild.
 
 EOF

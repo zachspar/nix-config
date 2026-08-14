@@ -8,6 +8,7 @@ My NixOS / nix-darwin configuration for personal machines. This flake manages sy
 
 - **maple** - Laptop
 - **tumble** - Desktop workstation
+- **flakey** - Headless server
 - **bootstrap** - Generic headless install target for nixos-anywhere (not a real machine)
 
 All Linux hosts share `hosts/linux/base.nix`. Desktop hosts add `hosts/linux/common.nix` (Plasma, printing, audio) and can opt into features like DisplayLink; headless servers add `hosts/linux/server-common.nix` (hardened SSH, firmware-agnostic bootloader). Hosts are **auto-discovered** from `hosts/linux/*/configuration.nix` — no `flake.nix` edit when adding a machine.
@@ -23,6 +24,11 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 ```
 .
 ├── flake.nix              # Discovery, host factories, devShell, apps
+├── .sops.yaml             # Public age recipients + creation rules
+├── docs/
+│   └── adding-secrets.md  # How to add and enroll sops secrets
+├── secrets/
+│   └── common.yaml        # Encrypted secrets (safe to commit)
 ├── scripts/
 │   ├── add-host           # Scaffold a new Linux host (desktop or server)
 │   └── bootstrap-host     # Install a host remotely via nixos-anywhere
@@ -38,6 +44,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
     │   └── neo/
     └── linux/
         ├── base.nix            # Headless-safe NixOS baseline
+        ├── sops.nix            # sops-nix + hashedPasswordFile (enrolled hosts)
         ├── common.nix          # Desktop baseline (imports base.nix)
         ├── server-common.nix   # Server baseline (imports base.nix)
         ├── boot/               # Bootloader modules (bios-uefi.nix)
@@ -45,6 +52,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
         ├── bootstrap/          # Generic nixos-anywhere install target
         ├── maple/
         ├── tumble/
+        ├── flakey/
         └── programs/
             └── displaylink/
 ```
@@ -55,7 +63,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 nix develop
 ```
 
-Provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
+Provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `sops`, `age`, `ssh-to-age`, `mkpasswd`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
 
 ## Getting Started
 
@@ -112,9 +120,9 @@ What `add-host` does:
 
 1. Creates `hosts/linux/<hostname>/configuration.nix` from the template (imports `common.nix`, sets hostname).
 2. Writes `hardware-configuration.nix` via `nixos-generate-config` when available, otherwise a stub that fails evaluation with instructions.
-3. Optionally writes `meta.nix` when `--system` is not `x86_64-linux`.
+3. Writes `meta.nix` with `sops = false` (and `system` when `--system` is not `x86_64-linux`).
 
-With `--server` it instead uses the server template (imports `server-common.nix` + the disko layout, sets the target disk), writes a bootable generic hardware stub that the install replaces, and always writes `meta.nix` with `headless = true`.
+With `--server` it instead uses the server template (imports `server-common.nix` + the disko layout, sets the target disk), writes a bootable generic hardware stub that the install replaces, and always writes `meta.nix` with `headless = true` and `sops = false`.
 
 Then:
 
@@ -139,10 +147,10 @@ Then:
 hosts/linux/<hostname>/
   configuration.nix          # required — discovered by the flake
   hardware-configuration.nix # required
-  meta.nix                   # optional: { system = "aarch64-linux"; headless = true; }
+  meta.nix                   # optional: { system = "aarch64-linux"; headless = true; sops = false; }
 ```
 
-`configuration.nix` should import `../common.nix` (desktop) or `../server-common.nix` (headless) plus `./hardware-configuration.nix`. Setting `headless = true` in `meta.nix` selects the server Home Manager profile (`home/server.nix`, no Plasma/GUI apps).
+`configuration.nix` should import `../common.nix` (desktop) or `../server-common.nix` (headless) plus `./hardware-configuration.nix`. Setting `headless = true` in `meta.nix` selects the server Home Manager profile (`home/server.nix`, no Plasma/GUI apps). `sops = false` (the add-host default) skips the login password until the host SSH key is enrolled; `sops = true` applies `hashedPasswordFile` from `secrets/common.yaml`.
 
 ## Headless Servers (nixos-anywhere)
 
@@ -212,6 +220,7 @@ TMPDIR=/tmp nixos-rebuild switch --flake .#<hostname> --target-host zspar@<host>
 ### System Level
 - Latest Linux kernel
 - KDE Plasma 6 with Wayland (desktop hosts)
+- Encrypted secrets via sops-nix / age (login password hashes; decrypted at activation)
 - Headless server baseline with hardened SSH and declarative disks (disko)
 - Remote provisioning via nixos-anywhere
 - Docker
@@ -231,4 +240,48 @@ TMPDIR=/tmp nixos-rebuild switch --flake .#<hostname> --target-host zspar@<host>
 - Nixpkgs tracks the branch set in `flake.nix` (currently nixos-26.05); Home Manager state version: 25.11
 - Git tree must be clean or committed for rebuilds to pick up new files reliably
 - DisplayLink prefetch script handles EULA acceptance for CI builds
-- Optional `hosts/linux/<name>/meta.nix`: `{ system = "x86_64-linux"; }` overrides the default system for that host; `headless = true` selects the server Home Manager profile
+- Optional `hosts/linux/<name>/meta.nix`: `{ system = "x86_64-linux"; }` overrides the default system for that host; `headless = true` selects the server Home Manager profile; `sops = true` applies the encrypted login password (default is on if the flag is omitted)
+
+## Secrets (sops-nix)
+
+Login passwords are a **yescrypt hash** stored in `secrets/common.yaml` and encrypted with [age](https://age-encryption.org) via [sops](https://github.com/getsops/sops). The file is regular YAML in this public repo; values are `ENC[...]`. Evaluation and CI do not need any private key. Decryption happens at activation on enrolled machines, using the SSH host ed25519 key.
+
+How to add a secret, declare it in Nix, and enroll a host: [docs/adding-secrets.md](docs/adding-secrets.md).
+
+The admin key used to *edit* secrets lives only on neo:
+
+```
+~/.config/sops/age/keys.txt
+```
+
+Never commit that file.
+
+### Set or change the `zspar` password
+
+```bash
+nix develop
+mkpasswd -m yescrypt          # paste the hash into the file below
+sops secrets/common.yaml      # replace users.zspar.hashedPassword
+```
+
+On enrolled hosts (`sops = true` in `meta.nix`), `users.mutableUsers = false`, so this hash is the source of truth. `passwd` will not stick.
+
+**Do not `nixos-rebuild switch` an enrolled host until the hash is a real `mkpasswd` value.** The committed file starts as a placeholder.
+
+### Enroll a host
+
+The machine must already have `/etc/ssh/ssh_host_ed25519_key` (OpenSSH is enabled in `base.nix`).
+
+```bash
+nix develop
+ssh zspar@<host> 'cat /etc/ssh/ssh_host_ed25519_key.pub' | ssh-to-age
+```
+
+1. Add the `age1…` public key to `.sops.yaml` (`keys:` plus the `secrets/common.yaml` creation rule).
+2. `sops updatekeys secrets/common.yaml`
+3. Set `sops = true` in `hosts/linux/<host>/meta.nix` (remove `sops = false`).
+4. Commit `.sops.yaml`, `secrets/common.yaml`, and `meta.nix`, then rebuild that host.
+
+`bootstrap` stays `sops = false` permanently — its host key is generated at install time and is not a recipient. New hosts from `add-host` also start with `sops = false`.
+
+maple and tumble were offline when this was added, so they are opted out until enrolled. flakey’s host key is already a recipient; set `sops = true` in its `meta.nix` after the real hash is in `secrets/common.yaml`.

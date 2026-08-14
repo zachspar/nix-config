@@ -25,3 +25,6 @@ result-*
 *.a
 .DS_Store
 
+# Age private keys — never commit
+keys.txt
+*.agekey

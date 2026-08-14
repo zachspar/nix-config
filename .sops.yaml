@@ -1,0 +1,11 @@
+# Public age recipients.
+# Host keys: ssh-to-age < /etc/ssh/ssh_host_ed25519_key.pub
+keys:
+  - &admin age1yfydymmxnh53kchwj2shpladdslt0uchvkpp5q5xk7kzsdkkgeps6dgprt
+  - &flakey age1m0huasjaa0mj233udk7znx9yg65rtrrvtsvcdfmy0p3rh69z0gasxenfve
+creation_rules:
+  - path_regex: secrets/common\.yaml$
+    key_groups:
+      - age:
+          - *admin
+          - *flakey

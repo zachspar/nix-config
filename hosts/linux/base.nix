@@ -40,7 +40,19 @@
     }];
   }];
 
-  # Define a user account. Don't forget to set a password with 'passwd'.
+  # Host ed25519 key is the sops-nix age identity. Password SSH is off
+  # everywhere; local console / SDDM still use the hashed password on
+  # enrolled hosts (see sops.nix).
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = false;
+      KbdInteractiveAuthentication = false;
+    };
+  };
+
+  # Define a user account. Enrolled hosts (meta.sops or true) set
+  # hashedPasswordFile from secrets/common.yaml; others stay SSH-key only.
   # Hosts can extend extraGroups (lists merge across modules).
   users.users.zspar = {
     isNormalUser = true;
