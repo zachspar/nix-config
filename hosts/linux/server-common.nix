@@ -6,6 +6,7 @@ let
   # Personal key used for provisioning and remote management.
   sshAuthorizedKeys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK37cMZSZZKhgPs/kMnscH3ks5rvoeu4J++J74xAekpa zspar@neo.local"
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHB/fn2gdHpvMk10yAhfke+NenFiU9+IdXHnO7goYgZI zspar@CW-JXKP2TFHYJ-L"
   ];
 in
 {
