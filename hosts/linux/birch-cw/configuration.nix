@@ -11,6 +11,10 @@
 
   networking.hostName = "birch-cw";
 
+  boot.kernelModules = [ "kvm-amd" ];
+
+  users.users.zspar.extraGroups = [ "kvm" ];
+
   # Target disk for disko (set via add-host --disk; wipes this disk on install).
   disko.devices.disk.main.device = "/dev/sdb";
 

@@ -61,6 +61,25 @@
       config.allowUnfree = true;
     };
 
+    # Named shells under devshells/*.nix. Attribute name is the filename
+    # without .nix. `default.nix` is reserved for the nix-config shell below.
+    extraDevShellFiles = lib.attrNames (
+      lib.filterAttrs (
+        name: type:
+        type == "regular"
+        && lib.hasSuffix ".nix" name
+        && name != "default.nix"
+      ) (builtins.readDir ./devshells)
+    );
+
+    mkExtraDevShells = pkgs:
+      lib.listToAttrs (
+        map (file: {
+          name = lib.removeSuffix ".nix" file;
+          value = import (./devshells + "/${file}") { inherit pkgs; };
+        }) extraDevShellFiles
+      );
+
     # Directories under hosts/linux that contain configuration.nix (skip programs/)
     linuxHostNames = lib.attrNames (
       lib.filterAttrs (
@@ -243,6 +262,7 @@
           '';
         };
       }
+      // mkExtraDevShells pkgs
     );
   };
 }

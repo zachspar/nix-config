@@ -23,8 +23,9 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 
 ```
 .
-├── flake.nix              # Discovery, host factories, devShell, apps
+├── flake.nix              # Discovery, host factories, devShells, apps
 ├── .sops.yaml             # Public age recipients + creation rules
+├── devshells/             # Named `nix develop .#<name>` shells (auto-discovered)
 ├── docs/
 │   └── adding-secrets.md  # How to add and enroll sops secrets
 ├── secrets/
@@ -57,13 +58,16 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
             └── displaylink/
 ```
 
-## Devshell
+## Devshells
 
 ```bash
-nix develop
+nix develop                  # nix-config tooling
+nix develop .#kata-containers
 ```
 
-Provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `sops`, `age`, `ssh-to-age`, `mkpasswd`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
+`nix develop` provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `sops`, `age`, `ssh-to-age`, `mkpasswd`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
+
+Named shells are auto-discovered from `devshells/*.nix` (filename without `.nix` is the attribute). They are available on every host via `nix develop .#<name>`.
 
 ## Getting Started
 
