@@ -25,7 +25,7 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 .
 ├── flake.nix              # Discovery, host factories, devShells, apps
 ├── .sops.yaml             # Public age recipients + creation rules
-├── devshells/             # Named `nix develop .#<name>` shells (auto-discovered)
+├── devshells/             # Named shells; see devshells/README.md
 ├── docs/
 │   └── adding-secrets.md  # How to add and enroll sops secrets
 ├── secrets/
@@ -60,25 +60,10 @@ Darwin hosts are auto-discovered from `hosts/darwin/*/default.nix`.
 
 ## Devshells
 
-```bash
-nix develop                  # nix-config tooling
-nix develop .#kata-containers
-```
+Details: [devshells/README.md](devshells/README.md).
 
-`nix develop` provides `add-host`, `bootstrap-host`, `nixos-anywhere`, `nixos-rebuild`, `sops`, `age`, `ssh-to-age`, `mkpasswd`, `nixfmt`, `nil`, `shellcheck`, `statix`, and `git`. The shell banner lists discovered hosts.
-
-Named shells are auto-discovered from `devshells/*.nix` (filename without `.nix` is the attribute). They are available on every host via `nix develop .#<name>`.
-
-`nix develop .#kata-containers` (or `/etc/nixos#kata-containers`) adds kernel-build tools plus:
-
-```bash
-kata-install [-y] [VERSION]   # Kata 4.0.0 static release → /opt/kata, wire containerd
-kata-ubuntu [--keep]          # interactive Ubuntu shell via the Kata runtime
-kata-status
-kata-cleanup                  # leftover containers, cache, and /opt/kata
-```
-
-The GitHub static binaries are generic Linux ELFs. On NixOS the host needs `programs.nix-ld.enable` and those `NIX_LD*` variables on the containerd unit (birch-cw already sets this) plus a rebuild.
+- **default** — nix-config tooling (`nix develop`)
+- **kata-containers** — Kata kernel build tools and local containerd runtime helpers (`nix develop .#kata-containers`)
 
 ## Getting Started
 

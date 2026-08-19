@@ -17,6 +17,11 @@ CONTAINERD_SOCKET="${CONTAINERD_SOCKET:-/run/containerd/containerd.sock}"
 DEFAULT_IMAGE="${KATA_UBUNTU_IMAGE:-docker.io/library/ubuntu:24.04}"
 DEFAULT_NAME="${KATA_UBUNTU_NAME:-kata-ubuntu}"
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/kata-containers"
+# ctr --cni defaults to /opt/cni/bin (not CNI_PATH from the nix store).
+CNI_BIN_DIR="${CNI_BIN_DIR:-/opt/cni/bin}"
+CNI_PATH="${CNI_PATH:-${CNI_BIN_DIR}}"
+NETCONFPATH="${NETCONFPATH:-/etc/cni/net.d}"
+DEFAULT_CNI_VERSION="${CNI_VERSION:-v1.9.1}"
 
 die() {
   echo "error: $*" >&2
@@ -77,17 +82,84 @@ ctr_bin() {
   command -v ctr || die "ctr not found (containerd client)"
 }
 
+nerdctl_bin() {
+  command -v nerdctl || die "nerdctl not found (enter the kata-containers devshell)"
+}
+
+# ctr --cni looks in CNI_BIN_DIR / CNI_PATH (default /opt/cni/bin). sudo must
+# keep those plus a PATH with ip/iptables. nix-ld vars are needed if the CNI
+# plugins are generic Linux ELFs.
+ctr_env_vars() {
+  local -a vars=(
+    "PATH=${PATH}"
+    "CNI_PATH=${CNI_PATH}"
+    "CNI_BIN_DIR=${CNI_BIN_DIR}"
+    "NETCONFPATH=${NETCONFPATH}"
+  )
+  if [[ -n "${NIX_LD:-}" ]]; then
+    vars+=("NIX_LD=${NIX_LD}")
+    vars+=("NIX_LD_LIBRARY_PATH=${NIX_LD_LIBRARY_PATH:-}")
+  elif [[ -e /run/current-system/sw/share/nix-ld/lib/ld.so ]]; then
+    vars+=("NIX_LD=/run/current-system/sw/share/nix-ld/lib/ld.so")
+    vars+=("NIX_LD_LIBRARY_PATH=/run/current-system/sw/share/nix-ld/lib")
+  fi
+  printf '%s\n' "${vars[@]}"
+}
+
 ctr_root() {
-  as_root "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+  local -a envvars=()
+  mapfile -t envvars < <(ctr_env_vars)
+  if [[ "$(id -u)" -eq 0 ]]; then
+    env "${envvars[@]}" "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+  else
+    need_cmd sudo
+    sudo env "${envvars[@]}" "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+  fi
 }
 
 # Replace this process with ctr (sudo if needed). Functions cannot be exec'd.
 exec_ctr_root() {
+  local -a envvars=()
+  mapfile -t envvars < <(ctr_env_vars)
   if [[ "$(id -u)" -eq 0 ]]; then
-    exec "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+    exec env "${envvars[@]}" "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
   else
     need_cmd sudo
-    exec sudo "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+    exec sudo env "${envvars[@]}" "$(ctr_bin)" --address "$CONTAINERD_SOCKET" "$@"
+  fi
+}
+
+nerdctl_root() {
+  local -a envvars=()
+  mapfile -t envvars < <(ctr_env_vars)
+  local -a nerdctl=(
+    "$(nerdctl_bin)"
+    --address "$CONTAINERD_SOCKET"
+    --cni-path "$CNI_BIN_DIR"
+    --cni-netconfpath "$NETCONFPATH"
+  )
+  if [[ "$(id -u)" -eq 0 ]]; then
+    env "${envvars[@]}" "${nerdctl[@]}" "$@"
+  else
+    need_cmd sudo
+    sudo env "${envvars[@]}" "${nerdctl[@]}" "$@"
+  fi
+}
+
+exec_nerdctl_root() {
+  local -a envvars=()
+  mapfile -t envvars < <(ctr_env_vars)
+  local -a nerdctl=(
+    "$(nerdctl_bin)"
+    --address "$CONTAINERD_SOCKET"
+    --cni-path "$CNI_BIN_DIR"
+    --cni-netconfpath "$NETCONFPATH"
+  )
+  if [[ "$(id -u)" -eq 0 ]]; then
+    exec env "${envvars[@]}" "${nerdctl[@]}" "$@"
+  else
+    need_cmd sudo
+    exec sudo env "${envvars[@]}" "${nerdctl[@]}" "$@"
   fi
 }
 
@@ -213,6 +285,31 @@ link_kata_bins() {
   done
 }
 
+install_cni_plugins() {
+  local version="$DEFAULT_CNI_VERSION"
+  [[ "$version" == v* ]] || version="v${version}"
+  local arch name url archive
+  arch="$(host_arch)"
+  name="cni-plugins-linux-${arch}-${version}.tgz"
+  url="https://github.com/containernetworking/plugins/releases/download/${version}/${name}"
+
+  mkdir -p "$CACHE_DIR"
+  archive="${CACHE_DIR}/${name}"
+  if [[ -f "$archive" ]]; then
+    info "using cached ${archive}"
+  else
+    info "downloading ${url}"
+    curl -fL --progress-bar -o "${archive}.part" "$url"
+    mv "${archive}.part" "$archive"
+  fi
+
+  info "installing CNI plugins to ${CNI_BIN_DIR}"
+  as_root mkdir -p "$CNI_BIN_DIR"
+  gzip -dc "$archive" | as_root tar -C "$CNI_BIN_DIR" -xp
+  [[ -x "${CNI_BIN_DIR}/bridge" && -x "${CNI_BIN_DIR}/portmap" && -x "${CNI_BIN_DIR}/host-local" ]] \
+    || die "CNI plugins missing after extract into ${CNI_BIN_DIR}"
+}
+
 cmd_install() {
   local version="$DEFAULT_KATA_VERSION" yes=0
   while [[ $# -gt 0 ]]; do
@@ -230,11 +327,12 @@ cmd_install() {
 Usage: kata-install [-y] [--latest] [VERSION]
 
 Download the Kata Containers static release tarball from GitHub and install
-it under /opt/kata (override with KATA_PREFIX). Wires containerd so
-\`ctr run --runtime io.containerd.kata.v2\` can find the shim.
+it under /opt/kata (override with KATA_PREFIX). Also installs CNI plugins
+to ${CNI_BIN_DIR} (nerdctl/ctr default path). Wires containerd so the
+Kata shim can be found.
 
 VERSION defaults to ${DEFAULT_KATA_VERSION}. Pass --latest to resolve the
-newest stable GitHub release instead.
+newest stable GitHub release instead. CNI plugins default to ${DEFAULT_CNI_VERSION}.
 EOF
         return 0
         ;;
@@ -305,6 +403,7 @@ EOF
 
   link_kata_bins
   configure_containerd_path
+  install_cni_plugins
   require_shim_runs
 
   info ""
@@ -326,6 +425,7 @@ Usage: kata-cleanup [-y]
 
 Stop leftover Kata containers, then remove:
   /opt/kata
+  /opt/cni
   /usr/local/bin/{containerd-shim-kata-v2,kata-runtime,kata-collect-data.sh}
   /etc/systemd/system/containerd.service.d/kata.conf
   the download cache under ~/.cache/kata-containers
@@ -339,17 +439,18 @@ EOF
   done
 
   if [[ "$yes" -ne 1 ]]; then
-    read -r -p "Remove ${KATA_PREFIX}, Kata containers, cache, and containerd drop-in? [y/N] " reply
+    read -r -p "Remove ${KATA_PREFIX}, ${CNI_BIN_DIR}, Kata containers, cache, and containerd drop-in? [y/N] " reply
     [[ "$reply" == [yY] || "$reply" == [yY][eE][sS] ]] || die "aborted"
   fi
 
-  if [[ -S "$CONTAINERD_SOCKET" ]] && command -v ctr >/dev/null 2>&1; then
+  if [[ -S "$CONTAINERD_SOCKET" ]]; then
     info "removing leftover container ${DEFAULT_NAME}"
     remove_container "$DEFAULT_NAME" || true
   fi
 
-  info "removing ${KATA_PREFIX}"
+  info "removing ${KATA_PREFIX} and /opt/cni"
   as_root rm -rf "$KATA_PREFIX"
+  as_root rm -rf /opt/cni
   as_root rm -f \
     /usr/local/bin/containerd-shim-kata-v2 \
     /usr/local/bin/kata-runtime \
@@ -360,7 +461,7 @@ EOF
     as_root systemctl daemon-reload
     as_root systemctl restart containerd || true
   fi
-  info "cleaned up ${KATA_PREFIX}"
+  info "cleaned up ${KATA_PREFIX} and /opt/cni"
 }
 
 cmd_status() {
@@ -388,26 +489,78 @@ cmd_status() {
   else
     echo "containerd:  not running"
   fi
+
+  if [[ -x "${CNI_BIN_DIR}/bridge" ]]; then
+    echo "cni:         ${CNI_BIN_DIR}"
+  else
+    echo "cni:         not installed (run kata-install)"
+  fi
 }
 
 container_exists() {
-  ctr_root containers info "$1" >/dev/null 2>&1
+  if command -v nerdctl >/dev/null 2>&1; then
+    nerdctl_root inspect "$1" >/dev/null 2>&1 && return 0
+  fi
+  command -v ctr >/dev/null 2>&1 && ctr_root containers info "$1" >/dev/null 2>&1
 }
 
 task_running() {
+  if command -v nerdctl >/dev/null 2>&1; then
+    [[ "$(nerdctl_root inspect -f '{{.State.Running}}' "$1" 2>/dev/null || true)" == "true" ]] && return 0
+  fi
+  command -v ctr >/dev/null 2>&1 || return 1
   ctr_root tasks ls | awk 'NR>1 { print $1 }' | grep -qx "$1"
 }
 
 remove_container() {
   local name="$1"
-  ctr_root tasks kill --signal SIGKILL "$name" >/dev/null 2>&1 || true
-  # Wait briefly for the task to exit so container delete succeeds.
-  for _ in 1 2 3 4 5; do
-    task_running "$name" || break
-    sleep 0.2
-  done
-  ctr_root tasks delete "$name" >/dev/null 2>&1 || true
-  ctr_root containers delete "$name" >/dev/null 2>&1 || true
+  if command -v nerdctl >/dev/null 2>&1; then
+    nerdctl_root rm -f "$name" >/dev/null 2>&1 || true
+  fi
+  if command -v ctr >/dev/null 2>&1; then
+    ctr_root tasks kill --signal SIGKILL "$name" >/dev/null 2>&1 || true
+    for _ in 1 2 3 4 5; do
+      task_running "$name" || break
+      sleep 0.2
+    done
+    ctr_root tasks delete "$name" >/dev/null 2>&1 || true
+    ctr_root containers delete "$name" >/dev/null 2>&1 || true
+  fi
+}
+
+ensure_cni() {
+  [[ -x "${CNI_BIN_DIR}/bridge" && -x "${CNI_BIN_DIR}/portmap" && -x "${CNI_BIN_DIR}/host-local" ]] \
+    || die "CNI plugins not found in ${CNI_BIN_DIR} (ctr looks here by default).
+Run kata-install to download containernetworking/plugins into /opt/cni/bin."
+
+  as_root mkdir -p /var/run/netns
+  if ! nerdctl_root network inspect kata-net >/dev/null 2>&1; then
+    info "creating nerdctl network kata-net (10.88.0.0/16)"
+    nerdctl_root network create --subnet 10.88.0.0/16 kata-net
+  fi
+
+  if [[ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" != "1" ]]; then
+    info "enabling net.ipv4.ip_forward"
+    as_root sysctl -w net.ipv4.ip_forward=1 >/dev/null
+  fi
+}
+
+# Host 127.0.0.53 (systemd-resolved) is not reachable inside the Kata VM.
+guest_resolv_conf() {
+  local dest="${CACHE_DIR}/resolv.conf"
+  mkdir -p "$CACHE_DIR"
+  : >"$dest"
+  if [[ -r /run/systemd/resolve/resolv.conf ]]; then
+    grep -E '^(nameserver|search|options)[[:space:]]' /run/systemd/resolve/resolv.conf >"$dest" || true
+  fi
+  if ! grep -qE '^nameserver[[:space:]]+' "$dest" 2>/dev/null && [[ -r /etc/resolv.conf ]]; then
+    grep -E '^(nameserver|search|options)[[:space:]]' /etc/resolv.conf \
+      | grep -vE 'nameserver[[:space:]]+127\.' >"$dest" || true
+  fi
+  if ! grep -qE '^nameserver[[:space:]]+' "$dest"; then
+    printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' >"$dest"
+  fi
+  echo "$dest"
 }
 
 cmd_ubuntu() {
@@ -436,14 +589,17 @@ cmd_ubuntu() {
         cat <<'EOF'
 Usage: kata-ubuntu [--keep] [--name NAME] [--image IMAGE] [-- CMD...]
 
-Pull IMAGE (default ubuntu:24.04) and run it with the Kata containerd
-runtime. With no command, opens an interactive /bin/bash.
+Pull IMAGE (default ubuntu:24.04) and run it with the Kata runtime via
+nerdctl (ctr --cni cannot join the netns into a Kata VM). Uses the
+kata-net CNI bridge (cni0 / 10.88.0.0/16). With no command, opens
+an interactive /bin/bash.
 
   --keep    leave the container running; re-running kata-ubuntu execs into it
-  --name    containerd container id (default: kata-ubuntu)
+  --name    container name (default: kata-ubuntu)
   --image   image to pull (default: docker.io/library/ubuntu:24.04)
 
-Requires: kata-install, a running containerd, and /dev/kvm.
+Requires: kata-install (Kata + CNI plugins in /opt/cni/bin), nerdctl
+from the kata-containers devshell, a running containerd, and /dev/kvm.
 EOF
         return 0
         ;;
@@ -467,27 +623,43 @@ EOF
   require_kvm
   require_containerd
   require_shim_runs
+  ensure_cni
+
+  local ns
+  local -a dns_opts=()
+  while read -r ns; do
+    [[ -n "$ns" ]] && dns_opts+=(--dns "$ns")
+  done < <(awk '/^nameserver[[:space:]]/ { print $2 }' "$(guest_resolv_conf)")
+  if [[ ${#dns_opts[@]} -eq 0 ]]; then
+    dns_opts=(--dns 8.8.8.8 --dns 1.1.1.1)
+  fi
+
+  local -a run_opts=(
+    --runtime "$KATA_RUNTIME"
+    --net kata-net
+    "${dns_opts[@]}"
+  )
 
   info "pulling ${image}"
-  ctr_root images pull "$image"
+  nerdctl_root pull "$image"
 
   if [[ "$keep" -eq 1 ]]; then
     if ! task_running "$name"; then
       if container_exists "$name"; then
         info "starting existing container ${name}"
-        ctr_root tasks start "$name" >/dev/null
+        nerdctl_root start "$name" >/dev/null
       else
-        info "creating ${name} with ${KATA_RUNTIME}"
-        ctr_root run -d --runtime "$KATA_RUNTIME" "$image" "$name" sleep infinity
+        info "creating ${name} with ${KATA_RUNTIME} + kata-net"
+        nerdctl_root run -d --name "$name" "${run_opts[@]}" "$image" sleep infinity
       fi
     fi
     info "exec into ${name}"
-    exec_ctr_root tasks exec -t --exec-id "shell-$$" "$name" "${cmd[@]}"
+    exec_nerdctl_root exec -it "$name" "${cmd[@]}"
   fi
 
   remove_container "$name"
-  info "running ${name} with ${KATA_RUNTIME} (removed on exit)"
-  exec_ctr_root run --runtime "$KATA_RUNTIME" --rm -t "$image" "$name" "${cmd[@]}"
+  info "running ${name} with ${KATA_RUNTIME} + kata-net (removed on exit)"
+  exec_nerdctl_root run --rm -it --name "$name" "${run_opts[@]}" "$image" "${cmd[@]}"
 }
 
 usage() {

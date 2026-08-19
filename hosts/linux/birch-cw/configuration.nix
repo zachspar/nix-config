@@ -21,6 +21,8 @@
     "kvm-amd"
     "vhost_vsock"
     "vhost"
+    "br_netfilter"
+    "overlay"
   ];
   boot.extraModprobeConfig = ''
     options kvm_amd nested=1
@@ -34,7 +36,12 @@
   # Linux ELFs, so nix-ld must replace NixOS's stub dynamic linker.
   virtualisation.containerd.enable = true;
   # `path` adds <entry>/bin to the unit PATH (see systemd.services.<name>.path).
-  systemd.services.containerd.path = [ "/opt/kata" ];
+  # iproute2 provides `tc`/`ip`, which the Kata shim uses to attach the VM nic.
+  systemd.services.containerd.path = [
+    "/opt/kata"
+    pkgs.iproute2
+    pkgs.cni-plugins
+  ];
   virtualisation.containerd.settings = {
     plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata = {
       runtime_type = "io.containerd.kata.v2";
@@ -85,6 +92,20 @@
       "/opt/kata/lib64"
     ];
   };
+
+  boot.kernel.sysctl = {
+    "net.ipv4.ip_forward" = true;
+    "net.bridge.bridge-nf-call-iptables" = true;
+  };
+  networking.firewall.trustedInterfaces = [ "cni0" ];
+  networking.nat = {
+    enable = true;
+    internalInterfaces = [ "cni0" ];
+  };
+  networking.networkmanager.unmanaged = [
+    "interface-name:cni0"
+    "interface-name:veth*"
+  ];
 
   # Target disk for disko (set via add-host --disk; wipes this disk on install).
   disko.devices.disk.main.device = "/dev/sdb";

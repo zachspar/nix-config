@@ -20,9 +20,13 @@ let
       jq
       xz
       zstd
+      gzip
     ]
     ++ lib.optionals pkgs.stdenv.isLinux [
       containerd
+      nerdctl
+      iptables
+      iproute2
     ];
 
   kataSrc = ../scripts/kata;
@@ -63,6 +67,7 @@ pkgs.mkShell {
     ]
     ++ lib.optionals pkgs.stdenv.isLinux [
       containerd
+      nerdctl
     ];
 
   buildInputs = with pkgs; [
@@ -75,10 +80,10 @@ pkgs.mkShell {
   shellHook = ''
     export PATH="/opt/kata/bin:$PATH"
     echo "kata-containers build + runtime shell"
-    echo "  kata-install [-y] [VERSION]   install Kata 4.0.0 static release to /opt/kata"
+    echo "  kata-install [-y] [VERSION]   install Kata 4.0.0 + CNI plugins (/opt/cni/bin)"
     echo "  kata-ubuntu [--keep]          Ubuntu shell via the Kata containerd runtime"
     echo "  kata-status                   show install / containerd / kvm"
-    echo "  kata-cleanup                  remove leftover containers, cache, and /opt/kata"
+    echo "  kata-cleanup                  remove leftover containers, /opt/kata, /opt/cni"
     echo "  NixOS: programs.nix-ld + containerd NIX_LD* (see birch-cw) then rebuild"
     echo ""
   '';
