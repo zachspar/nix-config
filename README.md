@@ -69,6 +69,17 @@ nix develop .#kata-containers
 
 Named shells are auto-discovered from `devshells/*.nix` (filename without `.nix` is the attribute). They are available on every host via `nix develop .#<name>`.
 
+`nix develop .#kata-containers` (or `/etc/nixos#kata-containers`) adds kernel-build tools plus:
+
+```bash
+kata-install [-y] [VERSION]   # Kata 4.0.0 static release → /opt/kata, wire containerd
+kata-ubuntu [--keep]          # interactive Ubuntu shell via the Kata runtime
+kata-status
+kata-cleanup                  # leftover containers, cache, and /opt/kata
+```
+
+The GitHub static binaries are generic Linux ELFs. On NixOS the host needs `programs.nix-ld.enable` and those `NIX_LD*` variables on the containerd unit (birch-cw already sets this) plus a rebuild.
+
 ## Getting Started
 
 ### Initial Setup (existing host)
