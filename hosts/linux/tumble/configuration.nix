@@ -25,6 +25,7 @@
 
   environment.systemPackages = with pkgs; [
     virt-manager
+    discord
   ];
 
   virtualisation.libvirtd = {
